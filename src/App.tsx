@@ -5,6 +5,9 @@ import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Soon from './pages/Soon'
+import NewQuiz from './pages/NewQuiz'
+import QuizList from './pages/QuizList'
+import QuizEditor from './pages/QuizEditor'
 
 const MENU = [
   { to: '/', label: 'Dashboard' },
@@ -43,9 +46,10 @@ function TeacherLayout({ session }: { session: Session }) {
       <main className="min-w-0 flex-1 p-4 md:p-8">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/nuova" element={<Soon title="Crea nuova verifica" phase={4} />} />
-          <Route path="/archivio" element={<Soon title="Archivio verifiche" phase={4} />} />
-          <Route path="/pubblicate" element={<Soon title="Verifiche pubblicate" phase={4} />} />
+          <Route path="/nuova" element={<NewQuiz />} />
+          <Route path="/verifica/:id" element={<QuizEditor />} />
+          <Route path="/archivio" element={<QuizList />} />
+          <Route path="/pubblicate" element={<QuizList onlyPublished />} />
           <Route path="/risultati" element={<Soon title="Risultati e correzioni" phase={5} />} />
           <Route path="/domande" element={<Soon title="Archivio domande" phase={4} />} />
           <Route path="/impostazioni" element={<Soon title="Impostazioni" phase={4} />} />
