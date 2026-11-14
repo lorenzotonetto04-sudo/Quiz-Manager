@@ -8,6 +8,9 @@ import Soon from './pages/Soon'
 import NewQuiz from './pages/NewQuiz'
 import QuizList from './pages/QuizList'
 import QuizEditor from './pages/QuizEditor'
+import Student from './pages/Student'
+import Results from './pages/Results'
+import ResultDetail from './pages/ResultDetail'
 
 const MENU = [
   { to: '/', label: 'Dashboard' },
@@ -50,7 +53,8 @@ function TeacherLayout({ session }: { session: Session }) {
           <Route path="/verifica/:id" element={<QuizEditor />} />
           <Route path="/archivio" element={<QuizList />} />
           <Route path="/pubblicate" element={<QuizList onlyPublished />} />
-          <Route path="/risultati" element={<Soon title="Risultati e correzioni" phase={5} />} />
+          <Route path="/risultati" element={<Results />} />
+          <Route path="/risultati/:id" element={<ResultDetail />} />
           <Route path="/domande" element={<Soon title="Archivio domande" phase={4} />} />
           <Route path="/impostazioni" element={<Soon title="Impostazioni" phase={4} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -76,7 +80,7 @@ export default function App() {
     <HashRouter>
       <Routes>
         {/* L'area studente (fase 5) sarà qui, fuori dal login: /s/:token */}
-        <Route path="/s/:token" element={<Soon title="Area studente" phase={5} />} />
+        <Route path="/s/:token" element={<Student />} />
         <Route path="/*" element={session ? <TeacherLayout session={session} /> : <Login />} />
       </Routes>
     </HashRouter>
