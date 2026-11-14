@@ -11,6 +11,7 @@ import QuizEditor from './pages/QuizEditor'
 import Student from './pages/Student'
 import Results from './pages/Results'
 import ResultDetail from './pages/ResultDetail'
+import Settings from './pages/Settings'
 
 const MENU = [
   { to: '/', label: 'Dashboard' },
@@ -56,7 +57,7 @@ function TeacherLayout({ session }: { session: Session }) {
           <Route path="/risultati" element={<Results />} />
           <Route path="/risultati/:id" element={<ResultDetail />} />
           <Route path="/domande" element={<Soon title="Archivio domande" phase={4} />} />
-          <Route path="/impostazioni" element={<Soon title="Impostazioni" phase={4} />} />
+          <Route path="/impostazioni" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
