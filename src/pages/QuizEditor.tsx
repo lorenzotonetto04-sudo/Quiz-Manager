@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { TYPES, blankQuestion, validateQuestion, fmtNum, type Q } from '../lib/types'
 import QuestionEditor from './QuestionEditor'
+import { generateScale, gradeValue, toNum } from '../lib/scale'
 
 type Link_ = { id: string; token: string; is_active: boolean; expires_at: string | null; max_attempts: number | null }
 const toLocal = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() - new Date(iso).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '')
@@ -19,9 +20,17 @@ export default function QuizEditor() {
   const [newType, setNewType] = useState('mcq_single')
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [scales, setScales] = useState<any[]>([]); const [defScale, setDefScale] = useState(''); const [newPass, setNewPass] = useState('')
   const base = location.origin + location.pathname + '#/s/'
 
+  async function loadScales() {
+    await supabase.rpc('teacher_ensure_default_scale')
+    const { data: sc } = await supabase.from('grade_scales').select('id,name,pass_percent,is_default').order('created_at')
+    setScales(sc ?? []); setDefScale(sc?.find((x) => x.is_default)?.id ?? '')
+  }
+
   async function load() {
+    await loadScales()
     const { data: quizRow } = await supabase.from('quizzes').select('*').eq('id', id).single()
     if (!quizRow) return setMsg({ ok: false, t: 'Verifica non trovata.' })
     const [{ data: rows }, { data: sols }, { data: lk }, { count }] = await Promise.all([
@@ -44,7 +53,7 @@ export default function QuizEditor() {
     const { error: e1 } = await supabase.from('quizzes').update({
       title: quiz.title, subject: quiz.subject, topic: quiz.topic, level: quiz.level, difficulty: quiz.difficulty,
       instructions: quiz.instructions, duration_minutes: quiz.duration_minutes, due_at: quiz.due_at,
-      shuffle_questions: quiz.shuffle_questions, shuffle_options: quiz.shuffle_options, results_mode: quiz.results_mode,
+      shuffle_questions: quiz.shuffle_questions, shuffle_options: quiz.shuffle_options, results_mode: quiz.results_mode, scale_id: quiz.scale_id,
     }).eq('id', id)
     if (e1) { setMsg({ ok: false, t: 'Salvataggio non riuscito: ' + e1.message }); return false }
     if (!hasAttempts) {
@@ -85,6 +94,28 @@ export default function QuizEditor() {
   async function delLink(l: Link_) { if (confirm('Eliminare questo link? Gli studenti non potranno più usarlo.')) { await supabase.from('access_links').delete().eq('id', l.id); load() } }
   async function copy(t: string) { await navigator.clipboard.writeText(t); setMsg({ ok: true, t: 'Link copiato.' }) }
 
+  async function createScale() {
+    const p = toNum(newPass)
+    if (!(p >= 10 && p <= 95)) return setMsg({ ok: false, t: 'Indica una percentuale di sufficienza tra 10 e 95.' })
+    const name = `Sufficienza ${String(p).replace('.', ',')}%`
+    const ex = scales.find((x) => x.name === name)
+    if (ex) { setField('scale_id', ex.id); setNewPass(''); return setMsg({ ok: true, t: `Selezionata la scala "${name}". Premi Salva.` }) }
+    const { data, error } = await supabase.from('grade_scales').insert({ name, pass_percent: p, rounding: 'none' }).select('id').single()
+    if (error || !data) return setMsg({ ok: false, t: 'Non sono riuscito a creare la scala: ' + (error?.message ?? '') })
+    const rows = generateScale(p).map((r) => ({ min: toNum(r.min), label: r.label, value: gradeValue(r.label) }))
+    const { error: e2 } = await supabase.rpc('teacher_save_scale', { p_scale: data.id, p_pass: p, p_rounding: 'none', p_rows: rows })
+    if (e2) { await supabase.from('grade_scales').delete().eq('id', data.id); return setMsg({ ok: false, t: 'Creazione scala non riuscita: ' + e2.message }) }
+    await loadScales(); setField('scale_id', data.id); setNewPass('')
+    setMsg({ ok: true, t: `Creata la scala "${name}" e selezionata. Premi Salva. Puoi ritoccarla in Impostazioni.` })
+  }
+
+  async function recalcAll() {
+    if (dirty && !(await save())) return
+    const { data } = await supabase.from('attempts').select('id').eq('quiz_id', id).neq('status', 'in_progress')
+    for (const a of data ?? []) await supabase.rpc('teacher_recalculate_attempt', { p_attempt: a.id })
+    setMsg({ ok: true, t: `Voti ricalcolati per ${(data ?? []).length} consegne.` })
+  }
+
   if (!quiz) return <p className="text-sm text-slate-500">{msg?.t ?? 'Caricamento…'}</p>
   const locked = hasAttempts
   const published = quiz.status === 'published'
@@ -120,6 +151,17 @@ export default function QuizEditor() {
             <option value="immediate_all">Subito voto e correzione</option>
             <option value="grade_immediate_solutions_later">Subito il voto, le soluzioni dopo la mia autorizzazione</option>
             <option value="all_later">Voto e soluzioni solo dopo la mia autorizzazione</option></select></div>
+        <div><label className="mb-1 block text-sm">Scala dei voti (con la percentuale di sufficienza di questa verifica)</label>
+          <select className="input" value={quiz.scale_id ?? defScale} onChange={(e) => setField('scale_id', e.target.value)}>
+            {scales.map((x) => <option key={x.id} value={x.id}>{x.name} · sufficienza {String(Number(x.pass_percent)).replace('.', ',')}%{x.is_default ? ' (predefinita)' : ''}</option>)}</select>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span>Oppure crea al volo una scala con sufficienza al</span>
+            <input className="input w-20" inputMode="decimal" aria-label="Percentuale di sufficienza" value={newPass} onChange={(e) => setNewPass(e.target.value)} /><span>%</span>
+            <button type="button" className="btn btn-ghost" onClick={createScale}>Crea e usa</button></div>
+          {hasAttempts && (
+            <div className="mt-2"><button type="button" className="btn btn-ghost" onClick={recalcAll}>Ricalcola i voti già assegnati con questa scala</button>
+              <p className="mt-1 text-xs text-slate-500">I voti che hai modificato a mano restano invariati.</p></div>)}
+        </div>
       </section>
 
       <section className="space-y-3">
