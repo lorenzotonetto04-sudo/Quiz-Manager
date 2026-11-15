@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { TYPES, blankQuestion, validateQuestion, fmtNum, type Q } from '../lib/types'
 import QuestionEditor from './QuestionEditor'
 import { generateScale, gradeValue, toNum } from '../lib/scale'
+import { buildPrintHtml } from '../lib/pdfHtml'
 
 type Link_ = { id: string; token: string; is_active: boolean; expires_at: string | null; max_attempts: number | null }
 const toLocal = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() - new Date(iso).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '')
@@ -94,10 +95,14 @@ export default function QuizEditor() {
   async function delLink(l: Link_) { if (confirm('Eliminare questo link? Gli studenti non potranno più usarlo.')) { await supabase.from('access_links').delete().eq('id', l.id); load() } }
   async function copy(t: string) { await navigator.clipboard.writeText(t); setMsg({ ok: true, t: 'Link copiato.' }) }
 
-  function openPdf(t: string) {
+  function openPdf(t: 'studente' | 'correttore') {
     if (dirty) return setMsg({ ok: false, t: 'Salva le modifiche prima di creare il PDF.' })
     if (qs.length === 0) return setMsg({ ok: false, t: 'Aggiungi almeno una domanda.' })
-    window.open(location.origin + location.pathname + '#/verifica/' + id + '/pdf/' + t, '_blank')
+    const sc = scales.find((x) => x.id === (quiz.scale_id ?? defScale))
+    const html = buildPrintHtml(t, quiz, qs, sc ? Number(sc.pass_percent) : null)
+    const w = window.open('', '_blank')
+    if (!w) return setMsg({ ok: false, t: 'Il browser ha bloccato la nuova scheda: consenti le finestre popup per questo sito e riprova.' })
+    w.document.open(); w.document.write(html); w.document.close()
   }
 
   async function createScale() {
