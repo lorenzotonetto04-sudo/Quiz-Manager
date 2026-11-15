@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { TYPES, blankQuestion, validateQuestion, fmtNum, type Q } from '../lib/types'
 import QuestionEditor from './QuestionEditor'
 import { generateScale, gradeValue, toNum } from '../lib/scale'
-import { buildPrintHtml } from '../lib/pdfHtml'
+import { buildQuizPdf } from '../lib/pdfQuiz'
 
 type Link_ = { id: string; token: string; is_active: boolean; expires_at: string | null; max_attempts: number | null }
 const toLocal = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() - new Date(iso).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '')
@@ -21,6 +21,7 @@ export default function QuizEditor() {
   const [newType, setNewType] = useState('mcq_single')
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null)
   const [scales, setScales] = useState<any[]>([]); const [defScale, setDefScale] = useState(''); const [newPass, setNewPass] = useState('')
   const base = location.origin + location.pathname + '#/s/'
 
@@ -98,11 +99,19 @@ export default function QuizEditor() {
   function openPdf(t: 'studente' | 'correttore') {
     if (dirty) return setMsg({ ok: false, t: 'Salva le modifiche prima di creare il PDF.' })
     if (qs.length === 0) return setMsg({ ok: false, t: 'Aggiungi almeno una domanda.' })
-    const sc = scales.find((x) => x.id === (quiz.scale_id ?? defScale))
-    const html = buildPrintHtml(t, quiz, qs, sc ? Number(sc.pass_percent) : null)
-    const w = window.open('', '_blank')
-    if (!w) return setMsg({ ok: false, t: 'Il browser ha bloccato la nuova scheda: consenti le finestre popup per questo sito e riprova.' })
-    w.document.open(); w.document.write(html); w.document.close()
+    try {
+      const sc = scales.find((x) => x.id === (quiz.scale_id ?? defScale))
+      const bytes = buildQuizPdf(t, quiz, qs, sc ? Number(sc.pass_percent) : null)
+      const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }))
+      const base = String(quiz.title).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'verifica'
+      const name = base + (t === 'correttore' ? '_correttore' : '') + '.pdf'
+      if (pdf) URL.revokeObjectURL(pdf.url)
+      setPdf({ url, name }); setMsg(null)
+      const a = document.createElement('a'); a.href = url; a.download = name
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch (e) {
+      setMsg({ ok: false, t: 'Creazione del PDF non riuscita: ' + (e as Error).message })
+    }
   }
 
   async function createScale() {
@@ -139,6 +148,7 @@ export default function QuizEditor() {
         <span className={published ? 'text-green-700' : 'text-orange-600'}>{published ? 'Pubblicata' : quiz.status === 'archived' ? 'Archiviata' : 'Bozza'}</span>
       </div>
       {msg && <p role="status" className={`rounded-md p-3 text-sm ${msg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{msg.t}</p>}
+      {pdf && <p className="rounded-md bg-green-50 p-3 text-sm text-green-800">PDF pronto: <a className="font-medium underline" href={pdf.url} download={pdf.name} target="_blank" rel="noreferrer">apri o scarica {pdf.name}</a></p>}
       {locked && <p className="rounded-md bg-orange-50 p-3 text-sm text-orange-800">Uno studente ha già iniziato questa verifica: domande e punteggi non sono più modificabili. Per cambiarli, duplica la verifica dall'archivio.</p>}
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
