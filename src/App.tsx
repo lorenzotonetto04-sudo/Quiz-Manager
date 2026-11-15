@@ -12,6 +12,7 @@ import Student from './pages/Student'
 import Results from './pages/Results'
 import ResultDetail from './pages/ResultDetail'
 import Settings from './pages/Settings'
+import PrintQuiz from './pages/PrintQuiz'
 
 const MENU = [
   { to: '/', label: 'Dashboard' },
@@ -52,6 +53,7 @@ function TeacherLayout({ session }: { session: Session }) {
           <Route path="/" element={<Dashboard />} />
           <Route path="/nuova" element={<NewQuiz />} />
           <Route path="/verifica/:id" element={<QuizEditor />} />
+          <Route path="/verifica/:id/pdf/:tipo" element={<PrintQuiz />} />
           <Route path="/archivio" element={<QuizList />} />
           <Route path="/pubblicate" element={<QuizList onlyPublished />} />
           <Route path="/risultati" element={<Results />} />

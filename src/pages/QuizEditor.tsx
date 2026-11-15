@@ -94,6 +94,12 @@ export default function QuizEditor() {
   async function delLink(l: Link_) { if (confirm('Eliminare questo link? Gli studenti non potranno più usarlo.')) { await supabase.from('access_links').delete().eq('id', l.id); load() } }
   async function copy(t: string) { await navigator.clipboard.writeText(t); setMsg({ ok: true, t: 'Link copiato.' }) }
 
+  function openPdf(t: string) {
+    if (dirty) return setMsg({ ok: false, t: 'Salva le modifiche prima di creare il PDF.' })
+    if (qs.length === 0) return setMsg({ ok: false, t: 'Aggiungi almeno una domanda.' })
+    window.open(location.origin + location.pathname + '#/verifica/' + id + '/pdf/' + t, '_blank')
+  }
+
   async function createScale() {
     const p = toNum(newPass)
     if (!(p >= 10 && p <= 95)) return setMsg({ ok: false, t: 'Indica una percentuale di sufficienza tra 10 e 95.' })
@@ -201,6 +207,8 @@ export default function QuizEditor() {
 
       <div className="fixed inset-x-0 bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white p-3 md:left-60">
         {dirty && <span className="mr-auto text-sm text-orange-600">Modifiche non salvate</span>}
+        <button className="btn btn-ghost" onClick={() => openPdf('studente')}>PDF verifica</button>
+        <button className="btn btn-ghost" onClick={() => openPdf('correttore')}>PDF correttore</button>
         {published && !locked && <button className="btn btn-ghost" onClick={unpublish}>Riporta in bozza</button>}
         <button className="btn btn-ghost" onClick={save}>Salva</button>
         {!published && <button className="btn btn-primary" onClick={publish}>Pubblica e crea link</button>}
