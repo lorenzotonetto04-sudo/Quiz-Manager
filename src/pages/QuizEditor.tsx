@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { TYPES, blankQuestion, validateQuestion, normalizeSolution, fmtNum, type Q } from '../lib/types'
 import QuestionEditor from './QuestionEditor'
+import BankPicker from './BankPicker'
 import { generateScale, gradeValue, toNum } from '../lib/scale'
 import { buildQuizPdf } from '../lib/pdfQuiz'
 
@@ -21,6 +22,7 @@ export default function QuizEditor() {
   const [newType, setNewType] = useState('mcq_single')
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [showBank, setShowBank] = useState(false)
   const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null)
   const [scales, setScales] = useState<any[]>([]); const [defScale, setDefScale] = useState(''); const [newPass, setNewPass] = useState('')
   const base = location.origin + location.pathname + '#/s/'
@@ -96,6 +98,21 @@ export default function QuizEditor() {
   async function patchLink(l: Link_, p: Partial<Link_>) { await supabase.from('access_links').update(p).eq('id', l.id); load() }
   async function delLink(l: Link_) { if (confirm('Eliminare questo link? Gli studenti non potranno più usarlo.')) { await supabase.from('access_links').delete().eq('id', l.id); load() } }
   async function copy(t: string) { await navigator.clipboard.writeText(t); setMsg({ ok: true, t: 'Link copiato.' }) }
+
+  async function saveToBank(list: Q[]) {
+    const bad = list.map((q) => ({ q, e: validateQuestion(q) })).find((x) => x.e)
+    if (bad) return setMsg({ ok: false, t: `Completa la domanda prima di salvarla in archivio: ${bad.e}.` })
+    let added = 0, skipped = 0
+    for (const q of list) {
+      const { data: dup } = await supabase.from('question_bank').select('id').eq('type', q.type).eq('content->>text', q.content.text).limit(1)
+      if (dup && dup.length) { skipped++; continue }
+      const { error } = await supabase.from('question_bank').insert({ subject: quiz.subject, topic: quiz.topic || null, type: q.type,
+        content: q.content, solution: normalizeSolution(q.solution), explanation: q.explanation || null, points: q.points })
+      if (error) return setMsg({ ok: false, t: 'Salvataggio in archivio non riuscito: ' + error.message })
+      added++
+    }
+    setMsg({ ok: true, t: `${added} ${added === 1 ? 'domanda salvata' : 'domande salvate'} in archivio${skipped ? ` (${skipped} già presenti)` : ''}.` })
+  }
 
   function openPdf(t: 'studente' | 'correttore') {
     if (dirty) return setMsg({ ok: false, t: 'Salva le modifiche prima di creare il PDF.' })
@@ -191,7 +208,7 @@ export default function QuizEditor() {
           <span className="text-sm text-slate-600">Punteggio massimo: <strong>{fmtNum(total)}</strong></span></div>
         {qs.length === 0 && <p className="text-sm text-slate-500">Nessuna domanda. Scegli un tipo qui sotto e aggiungi la prima.</p>}
         {qs.map((q, i) => (
-          <QuestionEditor key={q.id} q={q} index={i} locked={locked} error={validateQuestion(q)}
+          <QuestionEditor key={q.id} q={q} index={i} locked={locked} error={validateQuestion(q)} onBank={() => saveToBank([q])}
             onChange={(n) => setQ(i, n)} onDelete={() => { if (confirm('Eliminare questa domanda?')) { setQs(qs.filter((_, k) => k !== i)); setDirty(true) } }}
             onMove={(d) => { const j = i + d; if (j < 0 || j >= qs.length) return; const c = [...qs]; [c[i], c[j]] = [c[j], c[i]]; setQs(c); setDirty(true) }} />))}
         {!locked && (
@@ -199,7 +216,11 @@ export default function QuizEditor() {
             <select className="input max-w-xs" value={newType} onChange={(e) => setNewType(e.target.value)}>
               {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
             <button className="btn btn-ghost" onClick={() => { setQs([...qs, blankQuestion(newType)]); setDirty(true) }}>Aggiungi domanda</button>
+            <button className="btn btn-ghost" onClick={() => setShowBank(!showBank)}>Aggiungi dall'archivio</button>
           </div>)}
+        {showBank && !locked && <BankPicker subject={quiz.subject} onClose={() => setShowBank(false)}
+          onAdd={(list) => { setQs([...qs, ...list]); setDirty(true); setShowBank(false); setMsg({ ok: true, t: `${list.length} ${list.length === 1 ? 'domanda aggiunta' : 'domande aggiunte'} dall'archivio. Premi Salva per conservarle.` }) }} />}
+        {qs.length > 1 && <button className="text-sm text-brand underline" onClick={() => saveToBank(qs)}>Salva tutte le domande in archivio</button>}
       </section>
 
       {published && (

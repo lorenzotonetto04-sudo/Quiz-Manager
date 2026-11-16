@@ -1,8 +1,8 @@
 import { TYPES, BLANK_TYPES, TEXT_TYPES, newId, type Q } from '../lib/types'
 
-type Props = { q: Q; index: number; error: string | null; onChange: (q: Q) => void; onDelete: () => void; onMove: (d: number) => void; locked: boolean }
+type Props = { q: Q; index: number; error: string | null; onChange: (q: Q) => void; onDelete?: () => void; onMove?: (d: number) => void; onBank?: () => void; label?: string; locked: boolean }
 
-export default function QuestionEditor({ q, index, error, onChange, onDelete, onMove, locked }: Props) {
+export default function QuestionEditor({ q, index, error, onChange, onDelete, onMove, onBank, label, locked }: Props) {
   const setContent = (patch: object) => onChange({ ...q, content: { ...q.content, ...patch } })
   const setSol = (patch: object) => onChange({ ...q, solution: { ...q.solution, ...patch } })
   const isBlank = BLANK_TYPES.includes(q.type)
@@ -11,13 +11,14 @@ export default function QuestionEditor({ q, index, error, onChange, onDelete, on
   return (
     <fieldset disabled={locked} className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="font-medium">Domanda {index + 1} <span className="font-normal text-slate-500">· {TYPES[q.type]}</span></div>
+        <div className="font-medium">{label ?? `Domanda ${index + 1}`} <span className="font-normal text-slate-500">· {TYPES[q.type]}</span></div>
         <div className="flex items-center gap-2 text-sm">
           <label>Punti <input className="input inline-block w-20" type="number" step="0.25" min="0" value={q.points}
             onChange={(e) => onChange({ ...q, points: Number(e.target.value) })} /></label>
-          <button type="button" className="btn btn-ghost" onClick={() => onMove(-1)} aria-label="Sposta su">↑</button>
-          <button type="button" className="btn btn-ghost" onClick={() => onMove(1)} aria-label="Sposta giù">↓</button>
-          <button type="button" className="btn btn-ghost text-red-600" onClick={onDelete}>Elimina</button>
+          {onBank && <button type="button" className="btn btn-ghost" onClick={onBank}>Salva in archivio</button>}
+          {onMove && <button type="button" className="btn btn-ghost" onClick={() => onMove(-1)} aria-label="Sposta su">↑</button>}
+          {onMove && <button type="button" className="btn btn-ghost" onClick={() => onMove(1)} aria-label="Sposta giù">↓</button>}
+          {onDelete && <button type="button" className="btn btn-ghost text-red-600" onClick={onDelete}>Elimina</button>}
         </div>
       </div>
       {error && <p className="text-sm text-orange-600">Da completare: {error}</p>}

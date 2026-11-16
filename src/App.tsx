@@ -13,6 +13,7 @@ import Results from './pages/Results'
 import ResultDetail from './pages/ResultDetail'
 import Settings from './pages/Settings'
 import PrintQuiz from './pages/PrintQuiz'
+import Bank from './pages/Bank'
 
 const MENU = [
   { to: '/', label: 'Dashboard' },
@@ -58,7 +59,7 @@ function TeacherLayout({ session }: { session: Session }) {
           <Route path="/pubblicate" element={<QuizList onlyPublished />} />
           <Route path="/risultati" element={<Results />} />
           <Route path="/risultati/:id" element={<ResultDetail />} />
-          <Route path="/domande" element={<Soon title="Archivio domande" phase={4} />} />
+          <Route path="/domande" element={<Bank />} />
           <Route path="/impostazioni" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
