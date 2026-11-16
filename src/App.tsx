@@ -14,6 +14,7 @@ import ResultDetail from './pages/ResultDetail'
 import Settings from './pages/Settings'
 import PrintQuiz from './pages/PrintQuiz'
 import Bank from './pages/Bank'
+import Statistics from './pages/Statistics'
 
 const MENU = [
   { to: '/', label: 'Dashboard' },
@@ -21,6 +22,7 @@ const MENU = [
   { to: '/archivio', label: 'Archivio verifiche' },
   { to: '/pubblicate', label: 'Verifiche pubblicate' },
   { to: '/risultati', label: 'Risultati e correzioni' },
+  { to: '/statistiche', label: 'Statistiche' },
   { to: '/domande', label: 'Archivio domande' },
   { to: '/impostazioni', label: 'Impostazioni' },
 ]
@@ -60,6 +62,7 @@ function TeacherLayout({ session }: { session: Session }) {
           <Route path="/risultati" element={<Results />} />
           <Route path="/risultati/:id" element={<ResultDetail />} />
           <Route path="/domande" element={<Bank />} />
+          <Route path="/statistiche" element={<Statistics />} />
           <Route path="/impostazioni" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
