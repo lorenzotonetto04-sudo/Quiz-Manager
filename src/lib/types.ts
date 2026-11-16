@@ -39,6 +39,19 @@ export function blankQuestion(type: string): Q {
   }
 }
 
+// Toglie spazi ai bordi e voci vuote da un elenco di risposte
+const clean = (l: unknown): string[] => (Array.isArray(l) ? l : []).map((x) => String(x).trim()).filter(Boolean)
+
+// Mentre il docente scrive, le risposte restano "grezze" (con spazi e righe vuote): vanno ripulite solo al salvataggio
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function normalizeSolution(sol: any): any {
+  if (!sol) return sol
+  const out = { ...sol }
+  if (Array.isArray(sol.blanks)) out.blanks = sol.blanks.map((b: unknown) => clean(b))
+  if (Array.isArray(sol.accepted)) out.accepted = clean(sol.accepted)
+  return out
+}
+
 // Controlla una domanda: restituisce un messaggio d'errore oppure null
 export function validateQuestion(q: Q): string | null {
   if (!q.content.text?.trim()) return 'manca il testo';
@@ -51,14 +64,14 @@ export function validateQuestion(q: Q): string | null {
   if (BLANK_TYPES.includes(q.type)) {
     const n = (q.content.text.match(/___/g) || []).length
     if (n < 1) return 'inserisci almeno uno spazio "___"'
-    for (let i = 0; i < n; i++) if (!(q.solution.blanks?.[i] || []).length) return `manca la risposta dello spazio ${i + 1}`
+    for (let i = 0; i < n; i++) if (!clean(q.solution.blanks?.[i]).length) return `manca la risposta dello spazio ${i + 1}`
   }
   if (q.type === 'matching') {
     const l = q.content.left
     if (l.length < 2) return 'servono almeno 2 coppie'
     if (l.some((x: { text: string }) => !x.text.trim()) || q.content.right.some((x: { text: string }) => !x.text.trim())) return 'compila tutte le coppie'
   }
-  if (TEXT_TYPES.includes(q.type) && q.solution.auto && !(q.solution.accepted || []).length) return 'indica le risposte accettate'
+  if (TEXT_TYPES.includes(q.type) && q.solution.auto && !clean(q.solution.accepted).length) return 'indica le risposte accettate'
   if (!(q.points >= 0)) return 'punteggio non valido'
   return null
 }

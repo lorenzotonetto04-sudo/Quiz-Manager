@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { TYPES, blankQuestion, validateQuestion, fmtNum, type Q } from '../lib/types'
+import { TYPES, blankQuestion, validateQuestion, normalizeSolution, fmtNum, type Q } from '../lib/types'
 import QuestionEditor from './QuestionEditor'
 import { generateScale, gradeValue, toNum } from '../lib/scale'
 import { buildQuizPdf } from '../lib/pdfQuiz'
@@ -72,10 +72,11 @@ export default function QuizEditor() {
         const { error } = await supabase.from('quiz_questions').upsert(rows)
         if (error) { setMsg({ ok: false, t: 'Salvataggio domande non riuscito: ' + error.message }); return false }
         const { error: e3 } = await supabase.from('quiz_solutions').upsert(
-          qs.map((q) => ({ question_id: q.id, quiz_id: id, solution: q.solution, explanation: q.explanation || null })))
+          qs.map((q) => ({ question_id: q.id, quiz_id: id, solution: normalizeSolution(q.solution), explanation: q.explanation || null })))
         if (e3) { setMsg({ ok: false, t: 'Salvataggio soluzioni non riuscito: ' + e3.message }); return false }
       }
     }
+    if (!hasAttempts) setQs(qs.map((q) => ({ ...q, solution: normalizeSolution(q.solution) })))
     setDirty(false); setMsg({ ok: true, t: 'Salvato.' }); return true
   }
 

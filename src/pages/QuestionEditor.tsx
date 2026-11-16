@@ -61,9 +61,9 @@ export default function QuestionEditor({ q, index, error, onChange, onDelete, on
           <div className="text-sm font-medium">Risposte accettate per ogni spazio (separa le alternative con |)</div>
           {Array.from({ length: nBlanks }).map((_, i) => (
             <div key={i} className="flex items-center gap-2"><span className="w-16 text-sm text-slate-500">Spazio {i + 1}</span>
-              <input className="input" value={(q.solution.blanks?.[i] || []).join(' | ')}
+              <input className="input" value={(q.solution.blanks?.[i] || []).join('|')}
                 onChange={(e) => { const b = Array.from({ length: nBlanks }, (_, k) => q.solution.blanks?.[k] || [])
-                  b[i] = e.target.value.split('|').map((s) => s.trim()).filter(Boolean); setSol({ blanks: b }) }} /></div>))}
+                  b[i] = e.target.value.split('|'); setSol({ blanks: b }) }} /></div>))}
         </div>)}
 
       {TEXT_TYPES.includes(q.type) && (
@@ -71,8 +71,9 @@ export default function QuestionEditor({ q, index, error, onChange, onDelete, on
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!q.solution.auto} onChange={(e) => setSol({ auto: e.target.checked })} />
             Correzione automatica (solo se la risposta è breve e univoca; altrimenti la correggi tu)</label>
           <label className="block text-sm font-medium">{q.solution.auto ? 'Risposte accettate (una per riga)' : 'Risposta di riferimento (una per riga, visibile solo a te)'}</label>
-          <textarea className="input" rows={2} value={(q.solution.accepted || []).join('\n')}
-            onChange={(e) => setSol({ accepted: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })} />
+          <textarea className="input" rows={3} value={(q.solution.accepted || []).join('\n')}
+            onChange={(e) => setSol({ accepted: e.target.value.split('\n') })} />
+          <p className="text-xs text-slate-500">Puoi scrivere frasi con più parole. Premi Invio per aggiungere un'altra risposta accettata.</p>
         </div>)}
 
       {q.type === 'open' && (
