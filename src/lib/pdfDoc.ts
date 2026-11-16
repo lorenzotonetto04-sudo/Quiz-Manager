@@ -56,9 +56,10 @@ export class PdfWriter {
   private cur = -1
   private ops(): string[] { return this.pages[this.cur < 0 ? this.pages.length - 1 : this.cur] }
 
-  text(x: number, yTop: number, s: string, size: number, font: FontKey = 'F1', gray = 0) {
+  text(x: number, yTop: number, s: string, size: number, font: FontKey = 'F1', gray = 0, rgb?: [number, number, number]) {
     const Y = this.height - yTop - size * 0.85
-    this.ops().push(`BT ${n(gray)} g /${font} ${n(size)} Tf ${n(x)} ${n(Y)} Td <${toHex(s)}> Tj ET`)
+    const fill = rgb ? `${n(rgb[0])} ${n(rgb[1])} ${n(rgb[2])} rg` : `${n(gray)} g`
+    this.ops().push(`BT ${fill} /${font} ${n(size)} Tf ${n(x)} ${n(Y)} Td <${toHex(s)}> Tj ET`)
   }
   line(x1: number, y1: number, x2: number, y2: number, w = 0.6, gray = 0.45) {
     this.ops().push(`${n(gray)} G ${n(w)} w ${n(x1)} ${n(this.height - y1)} m ${n(x2)} ${n(this.height - y2)} l S`)
@@ -74,6 +75,18 @@ export class PdfWriter {
       `${n(cx - k)} ${n(y + r)} ${n(cx - r)} ${n(y + k)} ${n(cx - r)} ${n(y)} c ` +
       `${n(cx - r)} ${n(y - k)} ${n(cx - k)} ${n(y - r)} ${n(cx)} ${n(y - r)} c ` +
       `${n(cx + k)} ${n(y - r)} ${n(cx + r)} ${n(y - k)} ${n(cx + r)} ${n(y)} c S`)
+  }
+  dot(cx: number, cy: number, r: number, gray = 0.1) { // cerchio pieno
+    const k = 0.5523 * r, y = this.height - cy
+    this.ops().push(`${n(gray)} g ${n(cx + r)} ${n(y)} m ` +
+      `${n(cx + r)} ${n(y + k)} ${n(cx + k)} ${n(y + r)} ${n(cx)} ${n(y + r)} c ` +
+      `${n(cx - k)} ${n(y + r)} ${n(cx - r)} ${n(y + k)} ${n(cx - r)} ${n(y)} c ` +
+      `${n(cx - r)} ${n(y - k)} ${n(cx - k)} ${n(y - r)} ${n(cx)} ${n(y - r)} c ` +
+      `${n(cx + k)} ${n(y - r)} ${n(cx + r)} ${n(y - k)} ${n(cx + r)} ${n(y)} c f`)
+  }
+  cross(x: number, yTop: number, s: number) { // croce dentro una casella
+    const Y = (v: number) => this.height - v
+    this.ops().push(`0.1 G 1.3 w ${n(x)} ${n(Y(yTop))} m ${n(x + s)} ${n(Y(yTop + s))} l S ${n(x + s)} ${n(Y(yTop))} m ${n(x)} ${n(Y(yTop + s))} l S`)
   }
   tick(x: number, yTop: number, s: number) { // segno di spunta
     const Y = (v: number) => this.height - v

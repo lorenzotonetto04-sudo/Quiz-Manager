@@ -4,11 +4,11 @@ import { TYPES, BLANK_TYPES, fmtNum, type Q } from './types'
 import { describeSolution, seededShuffle } from './describe'
 
 type Row = { h: number; draw: (x: number, y: number) => void }
-const ML = 42.5, CW = 595.28 - 2 * 42.5, TOP = 44, BOTTOM = 841.89 - 52, LH = 1.3
-const clean = (s: unknown) => String(s ?? '').replace(/→/g, '->').replace(/[✔✓☐○]/g, '').replace(/\r/g, '')
+export const ML = 42.5, CW = 595.28 - 2 * 42.5, TOP = 44, BOTTOM = 841.89 - 52, LH = 1.3
+export const clean = (s: unknown) => String(s ?? '').replace(/→/g, '->').replace(/[✔✓☐○]/g, '').replace(/\r/g, '')
 
 // Spezza il testo in righe che stanno nella larghezza data
-function wrap(text: string, width: number, size: number, font: FontKey): string[] {
+export function wrap(text: string, width: number, size: number, font: FontKey): string[] {
   const out: string[] = []
   for (const para of clean(text).split('\n')) {
     let line = ''
@@ -28,12 +28,12 @@ function wrap(text: string, width: number, size: number, font: FontKey): string[
   return out
 }
 
-function rightOrder(q: Q): { id: string; text: string }[] {
+export function rightOrder(q: Q): { id: string; text: string }[] {
   const r = q.content.right as { id: string; text: string }[]
   const s = seededShuffle(r, q.id)
   return r.length > 1 && s.every((x, i) => x.id === r[i].id) ? [...r.slice(1), r[0]] : s
 }
-const letter = (i: number) => String.fromCharCode(65 + i)
+export const letter = (i: number) => String.fromCharCode(65 + i)
 
 export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[], pass: number | null): Uint8Array {
   const key = kind === 'correttore'

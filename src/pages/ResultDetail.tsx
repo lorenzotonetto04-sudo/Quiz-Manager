@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fmtNum } from '../lib/types'
 import { describeAnswer, describeSolution } from '../lib/describe'
+import { buildAttemptPdf } from '../lib/pdfAttempt'
 
 export default function ResultDetail() {
   const { id } = useParams(); const nav = useNavigate()
@@ -13,6 +14,7 @@ export default function ResultDetail() {
   const [sel, setSel] = useState(''); const [tc, setTc] = useState('')
   const [gr, setGr] = useState(false); const [sr, setSr] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
+  const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null)
 
   async function load() {
     const { data: a } = await supabase.from('attempts').select('*').eq('id', id).single()
@@ -53,6 +55,23 @@ export default function ResultDetail() {
     await supabase.from('attempts').update({ teacher_comment: tc || null, grade_released: gr, solutions_released: sr }).eq('id', id)
     await load(); setMsg({ ok: true, t: 'Correzione salvata e punteggio ricalcolato.' })
   }
+  function openPdf() {
+    if (Object.keys(edits).length > 0 || tc !== (att.teacher_comment ?? '') || sel !== (att.grade_overridden ? att.final_grade_label : '')) {
+      return setMsg({ ok: false, t: 'Salva la correzione prima di creare il PDF, così include le tue modifiche.' })
+    }
+    try {
+      const bytes = buildAttemptPdf(quiz, att, items)
+      const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }))
+      const safe = (x: string) => String(x).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_')
+      const name = `${safe(quiz?.title) || 'verifica'}_${safe(att.student_last)}_${safe(att.student_first)}.pdf`
+      if (pdf) URL.revokeObjectURL(pdf.url)
+      setPdf({ url, name }); setMsg(null)
+      const a = document.createElement('a'); a.href = url; a.download = name
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch (e) {
+      setMsg({ ok: false, t: 'Creazione del PDF non riuscita: ' + (e as Error).message })
+    }
+  }
   async function remove() {
     if (!confirm('Eliminare definitivamente questa consegna e i dati dello studente?')) return
     const { error } = await supabase.from('attempts').delete().eq('id', id)
@@ -73,6 +92,7 @@ export default function ResultDetail() {
       </div>
       {att.status === 'submitted' && <p className="rounded-md bg-orange-50 p-3 text-sm text-orange-800">Ci sono risposte da correggere. Finché non assegni un punteggio a tutte, il voto non è definitivo e lo studente non vede il risultato.</p>}
       {msg && <p role="status" className={`rounded-md p-3 text-sm ${msg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{msg.t}</p>}
+      {pdf && <p className="rounded-md bg-green-50 p-3 text-sm text-green-800">PDF pronto: <a className="font-medium underline" href={pdf.url} download={pdf.name} target="_blank" rel="noreferrer">apri o scarica {pdf.name}</a></p>}
 
       {items.map(({ q, an, s }, i) => {
         const e = edits[q.id] ?? {}; const need = an.manual_points === null && an.auto_points === null
@@ -106,6 +126,7 @@ export default function ResultDetail() {
       </section>
 
       <div className="fixed inset-x-0 bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white p-3 md:left-60">
+        <button className="btn btn-ghost" onClick={openPdf}>PDF consegna</button>
         <button className="btn btn-ghost text-red-600" onClick={remove}>Elimina consegna</button>
         <button className="btn btn-primary" onClick={save}>Salva correzione</button></div>
     </div>
