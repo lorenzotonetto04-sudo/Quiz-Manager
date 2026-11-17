@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { TYPES, blankQuestion, validateQuestion, normalizeSolution, fmtNum, type Q } from '../lib/types'
 import QuestionEditor from './QuestionEditor'
 import BankPicker from './BankPicker'
+import AiPanel from './AiPanel'
 import { generateScale, gradeValue, toNum } from '../lib/scale'
 import { buildQuizPdf } from '../lib/pdfQuiz'
 
@@ -23,6 +24,7 @@ export default function QuizEditor() {
   const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
   const [dirty, setDirty] = useState(false)
   const [showBank, setShowBank] = useState(false)
+  const [showAi, setShowAi] = useState(false)
   const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null)
   const [scales, setScales] = useState<any[]>([]); const [defScale, setDefScale] = useState(''); const [newPass, setNewPass] = useState('')
   const base = location.origin + location.pathname + '#/s/'
@@ -217,9 +219,12 @@ export default function QuizEditor() {
               {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
             <button className="btn btn-ghost" onClick={() => { setQs([...qs, blankQuestion(newType)]); setDirty(true) }}>Aggiungi domanda</button>
             <button className="btn btn-ghost" onClick={() => setShowBank(!showBank)}>Aggiungi dall'archivio</button>
+            <button className="btn btn-ghost" onClick={() => setShowAi(!showAi)}>Genera con AI</button>
           </div>)}
         {showBank && !locked && <BankPicker subject={quiz.subject} onClose={() => setShowBank(false)}
           onAdd={(list) => { setQs([...qs, ...list]); setDirty(true); setShowBank(false); setMsg({ ok: true, t: `${list.length} ${list.length === 1 ? 'domanda aggiunta' : 'domande aggiunte'} dall'archivio. Premi Salva per conservarle.` }) }} />}
+        {showAi && !locked && <AiPanel quiz={quiz} onClose={() => setShowAi(false)}
+          onAdd={(list) => { setQs([...qs, ...list]); setDirty(true); setShowAi(false); setMsg({ ok: true, t: `${list.length} ${list.length === 1 ? 'domanda aggiunta' : 'domande aggiunte'} dall'AI. Controllale e modificale, poi premi Salva.` }) }} />}
         {qs.length > 1 && <button className="text-sm text-brand underline" onClick={() => saveToBank(qs)}>Salva tutte le domande in archivio</button>}
       </section>
 
