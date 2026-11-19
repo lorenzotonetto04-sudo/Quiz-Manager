@@ -2,11 +2,32 @@
 @tailwind components;
 @tailwind utilities;
 
-body { @apply bg-slate-50 text-slate-800 antialiased; }
-.btn { @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2; }
-.btn-primary { @apply bg-brand text-white hover:bg-brand-dark; }
-.btn-ghost { @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-100; }
-.input { @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand; }
+html { -webkit-text-size-adjust: 100%; }
+body { @apply text-slate-800 antialiased; background: #eef3f5; }
+
+/* ---------- Pulsanti e campi ---------- */
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2; }
+.btn:disabled { @apply cursor-not-allowed opacity-50; }
+.btn-primary { @apply bg-brand text-white hover:bg-brand-dark; box-shadow: 0 1px 2px rgb(15 61 73 / .25), 0 6px 14px -6px rgb(19 78 94 / .55); }
+.btn-ghost { @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
+.input { @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20; }
+
+/* ---------- Schede, titoli, tabelle ---------- */
+.rounded-lg.border { border-radius: 1rem; border-color: #e1e8ec; box-shadow: 0 1px 2px rgb(15 23 42 / .04), 0 10px 24px -14px rgb(15 23 42 / .16); }
+main h1 { font-size: 1.75rem; line-height: 2.1rem; font-weight: 700; letter-spacing: -0.015em; color: #134e5e; }
+main h1::after { content: ''; display: block; width: 2.75rem; height: 3px; margin-top: .5rem; border-radius: 3px; background: #2a9d8f; }
+main thead th { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+main tbody tr:hover { background: #f6fafb; }
+
+/* Le pagine hanno una larghezza massima: le centro nella zona di lavoro */
+.page-wrap > [class*='max-w-'] { margin-left: auto; margin-right: auto; }
+
+/* ---------- Telefono ---------- */
+@media (max-width: 767px) {
+  .input { font-size: 16px; }           /* evita lo zoom automatico di iPhone quando tocchi un campo */
+  .btn { min-height: 44px; }
+  main h1 { font-size: 1.5rem; line-height: 1.9rem; }
+}
 
 /* ---------- Stampa / PDF (A4) ---------- */
 @media print {

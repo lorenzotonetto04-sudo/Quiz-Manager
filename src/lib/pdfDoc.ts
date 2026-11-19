@@ -61,8 +61,9 @@ export class PdfWriter {
     const fill = rgb ? `${n(rgb[0])} ${n(rgb[1])} ${n(rgb[2])} rg` : `${n(gray)} g`
     this.ops().push(`BT ${fill} /${font} ${n(size)} Tf ${n(x)} ${n(Y)} Td <${toHex(s)}> Tj ET`)
   }
-  line(x1: number, y1: number, x2: number, y2: number, w = 0.6, gray = 0.45) {
-    this.ops().push(`${n(gray)} G ${n(w)} w ${n(x1)} ${n(this.height - y1)} m ${n(x2)} ${n(this.height - y2)} l S`)
+  line(x1: number, y1: number, x2: number, y2: number, w = 0.6, gray = 0.45, rgb?: [number, number, number]) {
+    const stroke = rgb ? `${n(rgb[0])} ${n(rgb[1])} ${n(rgb[2])} RG` : `${n(gray)} G`
+    this.ops().push(`${stroke} ${n(w)} w ${n(x1)} ${n(this.height - y1)} m ${n(x2)} ${n(this.height - y2)} l S`)
   }
   rect(x: number, yTop: number, w: number, h: number, stroke = 0.3, fill?: number) {
     const o = `${n(x)} ${n(this.height - yTop - h)} ${n(w)} ${n(h)} re`
@@ -76,9 +77,10 @@ export class PdfWriter {
       `${n(cx - r)} ${n(y - k)} ${n(cx - k)} ${n(y - r)} ${n(cx)} ${n(y - r)} c ` +
       `${n(cx + k)} ${n(y - r)} ${n(cx + r)} ${n(y - k)} ${n(cx + r)} ${n(y)} c S`)
   }
-  dot(cx: number, cy: number, r: number, gray = 0.1) { // cerchio pieno
+  dot(cx: number, cy: number, r: number, gray = 0.1, rgb?: [number, number, number]) { // cerchio pieno
     const k = 0.5523 * r, y = this.height - cy
-    this.ops().push(`${n(gray)} g ${n(cx + r)} ${n(y)} m ` +
+    const fill = rgb ? `${n(rgb[0])} ${n(rgb[1])} ${n(rgb[2])} rg` : `${n(gray)} g`
+    this.ops().push(`${fill} ${n(cx + r)} ${n(y)} m ` +
       `${n(cx + r)} ${n(y + k)} ${n(cx + k)} ${n(y + r)} ${n(cx)} ${n(y + r)} c ` +
       `${n(cx - k)} ${n(y + r)} ${n(cx - r)} ${n(y + k)} ${n(cx - r)} ${n(y)} c ` +
       `${n(cx - r)} ${n(y - k)} ${n(cx - k)} ${n(y - r)} ${n(cx)} ${n(y - r)} c ` +

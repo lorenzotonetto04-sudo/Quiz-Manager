@@ -10,12 +10,10 @@ const GREEN: RGB = [0.08, 0.45, 0.2], RED: RGB = [0.72, 0.12, 0.12], ORANGE: RGB
 
 // PDF di una consegna: verifica compilata dallo studente + soluzioni dove la risposta non è del tutto corretta.
 // items: [{ q: domanda, an: risposta data, s: soluzione }]
-export function buildAttemptPdf(quiz: any, att: any, items: any[]): Uint8Array {
-  const pdf = new PdfWriter()
+export function drawAttempt(pdf: PdfWriter, quiz: any, att: any, items: any[]): void {
   let y = TOP
-  pdf.addPage()
+  pdf.addPage() // la consegna inizia sempre su una pagina nuova
   const newPage = () => { pdf.addPage(); y = TOP }
-  const student = `${att.student_last} ${att.student_first}`
 
   const para = (text: string, o: { x?: number; w?: number; size?: number; font?: FontKey; gray?: number; rgb?: RGB; gap?: number } = {}): Row => {
     const size = o.size ?? 10.5, font = o.font ?? 'F1', w = o.w ?? CW, lh = size * LH
@@ -101,12 +99,21 @@ export function buildAttemptPdf(quiz: any, att: any, items: any[]): Uint8Array {
     place(rows)
   })
 
-  // ---- piè di pagina ----
+}
+
+// Piè di pagina con numero di pagina su tutte le pagine del documento
+export function addFooters(pdf: PdfWriter, label: string): void {
   const n = pdf.pageCount
   for (let p = 0; p < n; p++) {
     pdf.goto(p)
-    const t = `${clean(quiz.title)}  ·  ${clean(student)}  ·  pagina ${p + 1} di ${n}`
+    const t = `${clean(label)}  ·  pagina ${p + 1} di ${n}`
     pdf.text((pdf.width - textWidth(t, 8.5)) / 2, pdf.height - 36, t, 8.5, 'F1', 0.45)
   }
+}
+
+export function buildAttemptPdf(quiz: any, att: any, items: any[]): Uint8Array {
+  const pdf = new PdfWriter()
+  drawAttempt(pdf, quiz, att, items)
+  addFooters(pdf, `${quiz.title}  ·  ${att.student_last} ${att.student_first}`)
   return pdf.build()
 }

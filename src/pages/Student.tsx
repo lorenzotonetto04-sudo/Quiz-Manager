@@ -126,7 +126,7 @@ function Quiz({ att, k, onDone }: { att: any; k: string; onDone: () => void }) {
 
   return (
     <Shell>
-      <div className="sticky top-0 z-10 -mx-4 mb-4 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+      <div className="sticky top-0 z-10 -mx-4 mb-4 border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:-mx-6 sm:px-6">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 truncate font-medium text-brand">{att.quiz.title}</div>
           {left !== null && <div className={`font-mono text-sm ${left < 60000 ? 'text-red-600' : 'text-slate-700'}`} aria-live="off">⏱ {mm}</div>}
