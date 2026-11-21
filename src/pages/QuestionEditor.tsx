@@ -1,8 +1,9 @@
 import { TYPES, BLANK_TYPES, TEXT_TYPES, newId, type Q } from '../lib/types'
+import ImageField from './ImageField'
 
-type Props = { q: Q; index: number; error: string | null; onChange: (q: Q) => void; onDelete?: () => void; onMove?: (d: number) => void; onBank?: () => void; label?: string; locked: boolean }
+type Props = { q: Q; index: number; error: string | null; onChange: (q: Q) => void; onDelete?: () => void; onMove?: (d: number) => void; onBank?: () => void; label?: string; passages?: { id: string; title: string }[]; locked: boolean }
 
-export default function QuestionEditor({ q, index, error, onChange, onDelete, onMove, onBank, label, locked }: Props) {
+export default function QuestionEditor({ q, index, error, onChange, onDelete, onMove, onBank, label, passages, locked }: Props) {
   const setContent = (patch: object) => onChange({ ...q, content: { ...q.content, ...patch } })
   const setSol = (patch: object) => onChange({ ...q, solution: { ...q.solution, ...patch } })
   const isBlank = BLANK_TYPES.includes(q.type)
@@ -27,6 +28,12 @@ export default function QuestionEditor({ q, index, error, onChange, onDelete, on
         <label className="mb-1 block text-sm font-medium">{isBlank ? 'Testo (scrivi ___ dove lo studente deve completare)' : 'Testo della domanda'}</label>
         <textarea className="input" rows={isBlank ? 3 : 2} value={q.content.text} onChange={(e) => setContent({ text: e.target.value })} />
       </div>
+      <ImageField value={q.imagePath} onChange={(p) => onChange({ ...q, imagePath: p })} label="Immagine della domanda (facoltativa)" />
+      {passages && passages.length > 0 && (
+        <div><label className="mb-1 block text-sm font-medium">Brano a cui si riferisce</label>
+          <select className="input max-w-md" value={q.passageId ?? ''} onChange={(e) => onChange({ ...q, passageId: e.target.value || null })}>
+            <option value="">Nessun brano</option>
+            {passages.map((p, i) => <option key={p.id} value={p.id}>Brano {i + 1}{p.title ? ': ' + p.title : ''}</option>)}</select></div>)}
 
       {q.type.startsWith('mcq') && (
         <div className="space-y-2">

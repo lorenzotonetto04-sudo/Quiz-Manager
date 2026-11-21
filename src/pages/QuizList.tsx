@@ -25,6 +25,7 @@ export default function QuizList({ onlyPublished = false }: { onlyPublished?: bo
     if (!quiz) return
     const { data: qs } = await supabase.from('quiz_questions').select('*').eq('quiz_id', id).order('position')
     const { data: sols } = await supabase.from('quiz_solutions').select('*').eq('quiz_id', id)
+    const { data: ps } = await supabase.from('quiz_passages').select('*').eq('quiz_id', id).order('position')
     const nid = newId()
     const { error } = await supabase.from('quizzes').insert({
       id: nid, title: quiz.title + ' (copia)', subject: quiz.subject, topic: quiz.topic, level: quiz.level,
@@ -33,9 +34,13 @@ export default function QuizList({ onlyPublished = false }: { onlyPublished?: bo
       results_mode: quiz.results_mode, scale_id: quiz.scale_id,
     })
     if (error) return setMsg('Duplicazione non riuscita: ' + error.message)
+    const pmap: Record<string, string> = {}
+    const newPs = (ps ?? []).map((p) => { pmap[p.id] = newId(); return { id: pmap[p.id], quiz_id: nid, position: p.position, title: p.title, body: p.body, image_path: p.image_path } })
+    if (newPs.length) await supabase.from('quiz_passages').insert(newPs)
     const map: Record<string, string> = {}
     const newQs = (qs ?? []).map((x) => { map[x.id] = newId(); return {
-      id: map[x.id], quiz_id: nid, position: x.position, type: x.type, content: x.content, points: x.points } })
+      id: map[x.id], quiz_id: nid, position: x.position, type: x.type, content: x.content, points: x.points,
+      passage_id: x.passage_id ? pmap[x.passage_id] ?? null : null, image_path: x.image_path } })
     if (newQs.length) await supabase.from('quiz_questions').insert(newQs)
     const newSols = (sols ?? []).map((s) => ({ question_id: map[s.question_id], quiz_id: nid, solution: s.solution, explanation: s.explanation }))
     if (newSols.length) await supabase.from('quiz_solutions').insert(newSols)

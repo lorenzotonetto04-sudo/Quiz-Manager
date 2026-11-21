@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { TYPES, blankQuestion, validateQuestion, normalizeSolution, fmtNum, type Q } from '../lib/types'
+import { TYPES, blankQuestion, validateQuestion, normalizeSolution, fmtNum, newId, type Q } from '../lib/types'
 import QuestionEditor from './QuestionEditor'
 import BankPicker from './BankPicker'
 import AiPanel from './AiPanel'
+import ImageField from './ImageField'
+import { loadImages } from '../lib/pdfImages'
 import { generateScale, gradeValue, toNum } from '../lib/scale'
 import { buildQuizPdf } from '../lib/pdfQuiz'
 
@@ -25,6 +27,8 @@ export default function QuizEditor() {
   const [dirty, setDirty] = useState(false)
   const [showBank, setShowBank] = useState(false)
   const [showAi, setShowAi] = useState(false)
+  const [passages, setPassages] = useState<{ id: string; title: string; body: string; imagePath: string | null }[]>([])
+  const [busyPdf, setBusyPdf] = useState(false)
   const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null)
   const [scales, setScales] = useState<any[]>([]); const [defScale, setDefScale] = useState(''); const [newPass, setNewPass] = useState('')
   const base = location.origin + location.pathname + '#/s/'
@@ -39,15 +43,17 @@ export default function QuizEditor() {
     await loadScales()
     const { data: quizRow } = await supabase.from('quizzes').select('*').eq('id', id).single()
     if (!quizRow) return setMsg({ ok: false, t: 'Verifica non trovata.' })
-    const [{ data: rows }, { data: sols }, { data: lk }, { count }] = await Promise.all([
+    const [{ data: rows }, { data: sols }, { data: lk }, { count }, { data: ps }] = await Promise.all([
       supabase.from('quiz_questions').select('*').eq('quiz_id', id).order('position'),
       supabase.from('quiz_solutions').select('*').eq('quiz_id', id),
       supabase.from('access_links').select('*').eq('quiz_id', id).order('created_at'),
       supabase.from('attempts').select('*', { count: 'exact', head: true }).eq('quiz_id', id),
+      supabase.from('quiz_passages').select('*').eq('quiz_id', id).order('position'),
     ])
+    setPassages((ps ?? []).map((p) => ({ id: p.id, title: p.title ?? '', body: p.body ?? '', imagePath: p.image_path ?? null })))
     setQuiz(quizRow); setLinks((lk as Link_[]) ?? []); setHasAttempts((count ?? 0) > 0)
     setQs((rows ?? []).map((r) => { const s = sols?.find((x) => x.question_id === r.id)
-      return { id: r.id, type: r.type, points: Number(r.points), content: r.content, solution: s?.solution ?? {}, explanation: s?.explanation ?? '' } }))
+      return { id: r.id, type: r.type, points: Number(r.points), content: r.content, solution: s?.solution ?? {}, explanation: s?.explanation ?? '', passageId: r.passage_id ?? null, imagePath: r.image_path ?? null } }))
   }
   useEffect(() => { load() }, [id])
 
@@ -63,6 +69,10 @@ export default function QuizEditor() {
     }).eq('id', id)
     if (e1) { setMsg({ ok: false, t: 'Salvataggio non riuscito: ' + e1.message }); return false }
     if (!hasAttempts) {
+      if (passages.length) {
+        const { error: ep } = await supabase.from('quiz_passages').upsert(passages.map((p, i) => ({ id: p.id, quiz_id: id, position: i, title: p.title || null, body: p.body, image_path: p.imagePath })))
+        if (ep) { setMsg({ ok: false, t: 'Salvataggio dei brani non riuscito: ' + ep.message }); return false }
+      }
       const keep = qs.map((q) => q.id)
       const { data: old } = await supabase.from('quiz_questions').select('id').eq('quiz_id', id)
       const gone = (old ?? []).map((o) => o.id).filter((x) => !keep.includes(x))
@@ -71,7 +81,7 @@ export default function QuizEditor() {
         const rows = qs.map((q, i) => {
           let content = q.content
           if (q.type === 'matching') content = { ...content, right: shuffle(content.right) } // l'ordine non deve rivelare le coppie
-          return { id: q.id, quiz_id: id, position: i, type: q.type, content, points: q.points }
+          return { id: q.id, quiz_id: id, position: i, type: q.type, content, points: q.points, passage_id: q.passageId ?? null, image_path: q.imagePath ?? null }
         })
         const { error } = await supabase.from('quiz_questions').upsert(rows)
         if (error) { setMsg({ ok: false, t: 'Salvataggio domande non riuscito: ' + error.message }); return false }
@@ -80,12 +90,19 @@ export default function QuizEditor() {
         if (e3) { setMsg({ ok: false, t: 'Salvataggio soluzioni non riuscito: ' + e3.message }); return false }
       }
     }
+    if (!hasAttempts) { // elimina i brani rimossi (le domande non li usano più)
+      const { data: oldP } = await supabase.from('quiz_passages').select('id').eq('quiz_id', id)
+      const goneP = (oldP ?? []).map((o) => o.id).filter((x) => !passages.some((p) => p.id === x))
+      if (goneP.length) await supabase.from('quiz_passages').delete().in('id', goneP)
+    }
     if (!hasAttempts) setQs(qs.map((q) => ({ ...q, solution: normalizeSolution(q.solution) })))
     setDirty(false); setMsg({ ok: true, t: 'Salvato.' }); return true
   }
 
   async function publish() {
     if (qs.length === 0) return setMsg({ ok: false, t: 'Aggiungi almeno una domanda prima di pubblicare.' })
+    const emptyP = passages.findIndex((p) => !p.body.trim())
+    if (emptyP >= 0) return setMsg({ ok: false, t: `Il brano ${emptyP + 1} non ha testo: scrivilo oppure eliminalo.` })
     const bad = qs.map((q, i) => ({ i, e: validateQuestion(q) })).find((x) => x.e)
     if (bad) return setMsg({ ok: false, t: `Domanda ${bad.i + 1}: ${bad.e}.` })
     if (!(await save())) return
@@ -109,29 +126,39 @@ export default function QuizEditor() {
       const { data: dup } = await supabase.from('question_bank').select('id').eq('type', q.type).eq('content->>text', q.content.text).limit(1)
       if (dup && dup.length) { skipped++; continue }
       const { error } = await supabase.from('question_bank').insert({ subject: quiz.subject, topic: quiz.topic || null, type: q.type,
-        content: q.content, solution: normalizeSolution(q.solution), explanation: q.explanation || null, points: q.points })
+        content: q.content, solution: normalizeSolution(q.solution), explanation: q.explanation || null, points: q.points, image_path: q.imagePath ?? null })
       if (error) return setMsg({ ok: false, t: 'Salvataggio in archivio non riuscito: ' + error.message })
       added++
     }
     setMsg({ ok: true, t: `${added} ${added === 1 ? 'domanda salvata' : 'domande salvate'} in archivio${skipped ? ` (${skipped} già presenti)` : ''}.` })
   }
 
-  function openPdf(t: 'studente' | 'correttore') {
+  const addPassage = () => { setPassages([...passages, { id: newId(), title: '', body: '', imagePath: null }]); setDirty(true) }
+  const setPassage = (pid: string, patch: Partial<{ title: string; body: string; imagePath: string | null }>) => { setPassages(passages.map((p) => (p.id === pid ? { ...p, ...patch } : p))); setDirty(true) }
+  function removePassage(pid: string) {
+    if (!confirm('Eliminare questo brano? Le domande collegate restano nella verifica, senza brano.')) return
+    setPassages(passages.filter((p) => p.id !== pid)); setQs(qs.map((q) => (q.passageId === pid ? { ...q, passageId: null } : q))); setDirty(true)
+  }
+
+  async function openPdf(t: 'studente' | 'correttore') {
     if (dirty) return setMsg({ ok: false, t: 'Salva le modifiche prima di creare il PDF.' })
     if (qs.length === 0) return setMsg({ ok: false, t: 'Aggiungi almeno una domanda.' })
+    setBusyPdf(true)
     try {
       const sc = scales.find((x) => x.id === (quiz.scale_id ?? defScale))
-      const bytes = buildQuizPdf(t, quiz, qs, sc ? Number(sc.pass_percent) : null)
+      const paths = Array.from(new Set([...qs.map((q) => q.imagePath), ...passages.map((p) => p.imagePath)].filter(Boolean) as string[]))
+      const { images, missing } = paths.length ? await loadImages(paths) : { images: {}, missing: 0 }
+      const bytes = buildQuizPdf(t, quiz, qs, sc ? Number(sc.pass_percent) : null, { passages, images })
       const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }))
       const base = String(quiz.title).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'verifica'
       const name = base + (t === 'correttore' ? '_correttore' : '') + '.pdf'
       if (pdf) URL.revokeObjectURL(pdf.url)
-      setPdf({ url, name }); setMsg(null)
-      const a = document.createElement('a'); a.href = url; a.download = name
-      document.body.appendChild(a); a.click(); a.remove()
+      setPdf({ url, name })
+      setMsg(missing ? { ok: false, t: `${missing} ${missing === 1 ? 'immagine non è stata inclusa' : 'immagini non sono state incluse'} nel PDF perché non è stato possibile scaricarle.` } : null)
+      if (!paths.length) { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove() }
     } catch (e) {
       setMsg({ ok: false, t: 'Creazione del PDF non riuscita: ' + (e as Error).message })
-    }
+    } finally { setBusyPdf(false) }
   }
 
   async function createScale() {
@@ -206,11 +233,27 @@ export default function QuizEditor() {
       </section>
 
       <section className="space-y-3">
+        <div className="flex items-center justify-between"><h2 className="font-medium">Brani di comprensione</h2>
+          {!locked && <button className="btn btn-ghost" onClick={addPassage}>Aggiungi brano</button>}</div>
+        {passages.length === 0 && <p className="text-sm text-slate-500">Facoltativo. Aggiungi un brano (con testo e, se vuoi, un'immagine), poi collegalo a più domande scegliendolo dentro ogni domanda.</p>}
+        <fieldset disabled={locked} className="space-y-3">
+          {passages.map((p, i) => (
+            <div key={p.id} className="space-y-2 rounded-lg border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-2"><div className="font-medium">Brano {i + 1} <span className="text-sm font-normal text-slate-500">· {qs.filter((q) => q.passageId === p.id).length} domande collegate</span></div>
+                <button type="button" className="btn btn-ghost text-red-600" onClick={() => removePassage(p.id)}>Elimina</button></div>
+              <input className="input" placeholder="Titolo del brano (facoltativo)" value={p.title} onChange={(e) => setPassage(p.id, { title: e.target.value })} />
+              <textarea className="input" rows={7} placeholder="Testo del brano" value={p.body} onChange={(e) => setPassage(p.id, { body: e.target.value })} />
+              <ImageField value={p.imagePath} onChange={(path) => setPassage(p.id, { imagePath: path })} label="Immagine del brano (facoltativa)" />
+            </div>))}
+        </fieldset>
+      </section>
+
+      <section className="space-y-3">
         <div className="flex items-center justify-between"><h2 className="font-medium">Domande</h2>
           <span className="text-sm text-slate-600">Punteggio massimo: <strong>{fmtNum(total)}</strong></span></div>
         {qs.length === 0 && <p className="text-sm text-slate-500">Nessuna domanda. Scegli un tipo qui sotto e aggiungi la prima.</p>}
         {qs.map((q, i) => (
-          <QuestionEditor key={q.id} q={q} index={i} locked={locked} error={validateQuestion(q)} onBank={() => saveToBank([q])}
+          <QuestionEditor key={q.id} q={q} index={i} locked={locked} error={validateQuestion(q)} onBank={() => saveToBank([q])} passages={passages}
             onChange={(n) => setQ(i, n)} onDelete={() => { if (confirm('Eliminare questa domanda?')) { setQs(qs.filter((_, k) => k !== i)); setDirty(true) } }}
             onMove={(d) => { const j = i + d; if (j < 0 || j >= qs.length) return; const c = [...qs]; [c[i], c[j]] = [c[j], c[i]]; setQs(c); setDirty(true) }} />))}
         {!locked && (
@@ -249,8 +292,8 @@ export default function QuizEditor() {
 
       <div className="fixed inset-x-0 bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white p-3 md:left-60">
         {dirty && <span className="mr-auto text-sm text-orange-600">Modifiche non salvate</span>}
-        <button className="btn btn-ghost" onClick={() => openPdf('studente')}>PDF verifica</button>
-        <button className="btn btn-ghost" onClick={() => openPdf('correttore')}>PDF correttore</button>
+        <button className="btn btn-ghost" disabled={busyPdf} onClick={() => openPdf('studente')}>{busyPdf ? 'Preparo il PDF…' : 'PDF verifica'}</button>
+        <button className="btn btn-ghost" disabled={busyPdf} onClick={() => openPdf('correttore')}>PDF correttore</button>
         {published && !locked && <button className="btn btn-ghost" onClick={unpublish}>Riporta in bozza</button>}
         <button className="btn btn-ghost" onClick={save}>Salva</button>
         {!published && <button className="btn btn-primary" onClick={publish}>Pubblica e crea link</button>}

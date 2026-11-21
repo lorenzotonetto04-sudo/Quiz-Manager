@@ -5,7 +5,7 @@ import { TYPES, blankQuestion, fmtNum, normalizeSolution, validateQuestion, type
 import QuestionEditor from './QuestionEditor'
 
 type Edit = { id: string | null; subject: string; topic: string; q: Q }
-const toQ = (r: any): Q => ({ id: r.id, type: r.type, points: Number(r.points), content: r.content, solution: r.solution ?? {}, explanation: r.explanation ?? '' })
+const toQ = (r: any): Q => ({ id: r.id, type: r.type, points: Number(r.points), content: r.content, solution: r.solution ?? {}, explanation: r.explanation ?? '', imagePath: r.image_path ?? null })
 
 export default function Bank() {
   const [rows, setRows] = useState<any[]>([])
@@ -30,7 +30,7 @@ export default function Bank() {
     const err = validateQuestion(edit.q)
     if (err) return setMsg({ ok: false, t: 'Domanda incompleta: ' + err + '.' })
     const payload = { subject: edit.subject.trim(), topic: edit.topic.trim() || null, type: edit.q.type, content: edit.q.content,
-      solution: normalizeSolution(edit.q.solution), explanation: edit.q.explanation || null, points: edit.q.points }
+      solution: normalizeSolution(edit.q.solution), explanation: edit.q.explanation || null, points: edit.q.points, image_path: edit.q.imagePath ?? null }
     const { error } = edit.id ? await supabase.from('question_bank').update(payload).eq('id', edit.id) : await supabase.from('question_bank').insert(payload)
     if (error) return setMsg({ ok: false, t: 'Salvataggio non riuscito: ' + error.message })
     setEdit(null); setMsg({ ok: true, t: 'Domanda salvata in archivio.' }); load()

@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { describeAnswer, describeSolution, seededShuffle } from '../lib/describe'
 import { fmtNum } from '../lib/types'
+import { imageUrl } from '../lib/images'
 
 const ERR: Record<string, string> = {
   link_invalid: 'Questo link non è valido.', link_inactive: 'Questo link è stato disattivato dal docente.',
@@ -143,10 +144,12 @@ function Quiz({ att, k, onDone }: { att: any; k: string; onDone: () => void }) {
           const p = showPassage ? passages.find((x) => x.id === q.passage_id) : null
           return (
             <div key={q.id} className="space-y-3">
-              {p && <div className="rounded-lg bg-brand-light p-4 text-sm"><div className="mb-1 font-medium">{p.title}</div><div className="whitespace-pre-line">{p.body}</div></div>}
+              {p && <div className="rounded-lg bg-brand-light p-4 text-sm"><div className="mb-1 font-medium">{p.title}</div><div className="whitespace-pre-line">{p.body}</div>
+                {p.image_path && <img src={imageUrl(p.image_path)} alt="Immagine del brano" loading="lazy" className="mt-3 max-h-96 w-auto max-w-full rounded-md border border-slate-200 bg-white" />}</div>}
               <section className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="mb-2 flex justify-between gap-2"><h2 className="font-medium">{i + 1}. {q.content.text}</h2>
                   <span className="shrink-0 text-xs text-slate-500">{fmtNum(Number(q.points))} pt</span></div>
+                {q.image_path && <img src={imageUrl(q.image_path)} alt="Immagine della domanda" loading="lazy" className="mb-3 max-h-96 w-auto max-w-full rounded-md border border-slate-200" />}
                 <Input q={q} value={answers[q.id]} shuffleOpts={att.quiz.shuffle_options} seed={att.attempt_id}
                   onChange={(v) => setAnswers({ ...answers, [q.id]: v })} />
               </section>

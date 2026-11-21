@@ -35,7 +35,11 @@ export function rightOrder(q: Q): { id: string; text: string }[] {
 }
 export const letter = (i: number) => String.fromCharCode(65 + i)
 
-export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[], pass: number | null): Uint8Array {
+export type PassageIn = { id: string; title: string; body: string; imagePath?: string | null }
+export type ImageIn = { bytes: Uint8Array; w: number; h: number; comps: number }
+export type Extras = { passages?: PassageIn[]; images?: Record<string, ImageIn> }
+
+export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[], pass: number | null, extras: Extras = {}): Uint8Array {
   const key = kind === 'correttore'
   const pdf = new PdfWriter()
   let y = TOP
@@ -64,6 +68,28 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
     for (const r of rows) { if (y + r.h > BOTTOM) newPage(); r.draw(ML, y); y += r.h }
   }
 
+  // ---- immagini e brani ----
+  const imgNames: Record<string, string> = {}
+  const imageRow = (path?: string | null, x0 = 0, wMax = CW): Row | null => {
+    const im = path ? extras.images?.[path] : undefined
+    if (!path || !im) return null
+    const w0 = Math.min(wMax, 380, im.w * 0.6), maxH = 230
+    let w = w0, h = (w0 * im.h) / im.w
+    if (h > maxH) { w = (maxH * im.w) / im.h; h = maxH }
+    if (!imgNames[path]) imgNames[path] = pdf.addImage(im.bytes, im.w, im.h, im.comps)
+    return { h: h + 8, draw: (x, yy) => pdf.image(x + x0, yy + 2, w, h, imgNames[path]) }
+  }
+  // Il brano ha una barra grigia a sinistra che prosegue su tutte le sue righe
+  const passageRows = (p: PassageIn): Row[] => {
+    const bar = (r: Row): Row => ({ h: r.h, draw: (x, yy) => { r.draw(x, yy); pdf.line(x + 3, yy, x + 3, yy + r.h, 2, 0.75) } })
+    const rows: Row[] = []
+    if (p.title) rows.push(bar(para(p.title, { size: 11, font: 'F2', x: 14, w: CW - 14, gap: 3 })))
+    rows.push(bar(para(p.body, { size: 10.5, x: 14, w: CW - 14, gap: 4 })))
+    const im = imageRow(p.imagePath, 14, CW - 14); if (im) rows.push(bar(im))
+    rows.push(space(8))
+    return rows
+  }
+
   // ---- intestazione ----
   const total = qs.reduce((t, q) => t + (Number(q.points) || 0), 0)
   const head: Row[] = []
@@ -82,7 +108,13 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
   place(head, false)
 
   // ---- domande ----
+  let lastPassage: string | null = null
   qs.forEach((q, i) => {
+    if (q.passageId && q.passageId !== lastPassage) {
+      const p = extras.passages?.find((x) => x.id === q.passageId)
+      if (p) place(passageRows(p), false)
+    }
+    lastPassage = q.passageId ?? null
     const c = q.content, sol: any = q.solution
     const text = BLANK_TYPES.includes(q.type) ? String(c.text).replace(/___/g, '______________') : String(c.text)
     const pts = `${fmtNum(Number(q.points))} pt`
@@ -92,6 +124,7 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
       tl.forEach((l, k) => pdf.text(x, yy + k * 11 * LH, l, 11, 'F2'))
       pdf.text(x + CW - ptsW, yy, pts, 10) } }]
     if (key) rows.push(para(`(${TYPES[q.type]})`, { size: 8.5, font: 'F3', gray: 0.45, gap: 2 }))
+    const qImg = imageRow(q.imagePath); if (qImg) rows.push(qImg)
 
     if (q.type === 'mcq_single' || q.type === 'mcq_multi') {
       const multi = q.type === 'mcq_multi'

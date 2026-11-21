@@ -24,7 +24,7 @@ export default function BankPicker({ subject, onAdd, onClose }: { subject: strin
   function add() {
     const picked = (rows ?? []).filter((r) => sel.includes(r.id)).map((r): Q => ({
       id: newId(), type: r.type, points: Number(r.points),
-      content: JSON.parse(JSON.stringify(r.content)), solution: JSON.parse(JSON.stringify(r.solution ?? {})), explanation: r.explanation ?? '',
+      content: JSON.parse(JSON.stringify(r.content)), solution: JSON.parse(JSON.stringify(r.solution ?? {})), explanation: r.explanation ?? '', imagePath: r.image_path ?? null,
     }))
     onAdd(picked)
   }

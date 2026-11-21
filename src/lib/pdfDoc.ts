@@ -46,10 +46,28 @@ function toHex(s: string): string {
 }
 const n = (v: number) => v.toFixed(2)
 
+// Legge dimensioni e canali di un JPEG (serve per inserirlo nel PDF). Restituisce null se non è un JPEG supportato.
+export function jpegInfo(b: Uint8Array): { w: number; h: number; comps: number } | null {
+  if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null
+  let i = 2
+  while (i + 9 < b.length) {
+    if (b[i] !== 0xff) { i++; continue }
+    const m = b[i + 1]
+    if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { i += 2; continue }
+    if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+      const comps = b[i + 9]
+      return comps === 1 || comps === 3 ? { h: (b[i + 5] << 8) | b[i + 6], w: (b[i + 7] << 8) | b[i + 8], comps } : null
+    }
+    i += 2 + ((b[i + 2] << 8) | b[i + 3])
+  }
+  return null
+}
+
 export class PdfWriter {
   readonly width = 595.28
   readonly height = 841.89
   private pages: string[][] = []
+  private images: { bytes: Uint8Array; w: number; h: number; comps: number }[] = []
   get pageCount() { return this.pages.length }
   addPage() { this.pages.push([]) }
   goto(i: number) { this.cur = i }
@@ -90,35 +108,51 @@ export class PdfWriter {
     const Y = (v: number) => this.height - v
     this.ops().push(`0.1 G 1.3 w ${n(x)} ${n(Y(yTop))} m ${n(x + s)} ${n(Y(yTop + s))} l S ${n(x + s)} ${n(Y(yTop))} m ${n(x)} ${n(Y(yTop + s))} l S`)
   }
+  // Registra un'immagine JPEG e restituisce il nome da usare con image()
+  addImage(bytes: Uint8Array, w: number, h: number, comps = 3): string { this.images.push({ bytes, w, h, comps }); return `Im${this.images.length}` }
+  image(x: number, yTop: number, w: number, h: number, name: string) {
+    this.ops().push(`q ${n(w)} 0 0 ${n(h)} ${n(x)} ${n(this.height - yTop - h)} cm /${name} Do Q`)
+  }
   tick(x: number, yTop: number, s: number) { // segno di spunta
     const Y = (v: number) => this.height - v
     this.ops().push(`0.1 0.5 0.2 RG 1.4 w ${n(x)} ${n(Y(yTop + s * 0.55))} m ${n(x + s * 0.35)} ${n(Y(yTop + s * 0.95))} l ${n(x + s)} ${n(Y(yTop))} l S`)
   }
 
   build(): Uint8Array {
-    const objs: string[] = []
-    const add = (s: string) => { objs.push(s); return objs.length }
+    type Obj = { head: string; bin?: Uint8Array }
+    const objs: Obj[] = []
+    const add = (head: string, bin?: Uint8Array) => { objs.push({ head, bin }); return objs.length }
     add('<< /Type /Catalog /Pages 2 0 R >>')
     add('') // 2: elenco pagine, riempito dopo
     const font = (name: string) => add(`<< /Type /Font /Subtype /Type1 /BaseFont /${name} /Encoding /WinAnsiEncoding >>`)
     font('Helvetica'); font('Helvetica-Bold'); font('Helvetica-Oblique') // 3,4,5
+    for (const im of this.images) { // dal 6 in poi: le immagini
+      add(`<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /${im.comps === 1 ? 'DeviceGray' : 'DeviceRGB'} /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`, im.bytes)
+    }
+    const xobj = this.images.length ? ` /XObject << ${this.images.map((_, k) => `/Im${k + 1} ${6 + k} 0 R`).join(' ')} >>` : ''
     const kids: number[] = []
     for (const ops of this.pages) {
       const stream = ops.join('\n')
       const content = add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`)
       const page = add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${n(this.width)} ${n(this.height)}] ` +
-        `/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${content} 0 R >>`)
+        `/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >>${xobj} >> /Contents ${content} 0 R >>`)
       kids.push(page)
     }
-    objs[1] = `<< /Type /Pages /Kids [${kids.map((k) => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`
-    let out = '%PDF-1.4\n'
+    objs[1] = { head: `<< /Type /Pages /Kids [${kids.map((k) => k + ' 0 R').join(' ')}] /Count ${kids.length} >>` }
+    const chunks: Uint8Array[] = []; let len = 0
+    const put = (t: string) => { const b = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) b[i] = t.charCodeAt(i) & 255; chunks.push(b); len += b.length }
     const offsets: number[] = []
-    objs.forEach((o, i) => { offsets.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n` })
-    const xref = out.length
-    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('')
-    out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
-    const bytes = new Uint8Array(out.length)
-    for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255
-    return bytes
+    put('%PDF-1.4\n')
+    objs.forEach((o, i) => {
+      offsets.push(len); put(`${i + 1} 0 obj\n${o.head}`)
+      if (o.bin) { chunks.push(o.bin); len += o.bin.length; put('\nendstream') }
+      put('\nendobj\n')
+    })
+    const xref = len
+    put(`xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join(''))
+    put(`trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`)
+    const out = new Uint8Array(len); let p = 0
+    for (const c of chunks) { out.set(c, p); p += c.length }
+    return out
   }
 }

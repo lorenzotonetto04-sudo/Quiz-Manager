@@ -16,7 +16,7 @@ export const TEXT_TYPES = ['short_answer', 'translation', 'transformation']
 export const fmtNum = (n: number) => String(Math.round(n * 100) / 100).replace('.', ',')
 export const newId = () => crypto.randomUUID()
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Q = { id: string; type: string; points: number; content: any; solution: any; explanation: string }
+export type Q = { id: string; type: string; points: number; content: any; solution: any; explanation: string; passageId?: string | null; imagePath?: string | null }
 
 export function blankQuestion(type: string): Q {
   const base = { id: newId(), type, points: 1, explanation: '' }
