@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import Notice from './Notice'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -91,7 +92,7 @@ export default function ResultDetail() {
           <div key={l} className="rounded-lg border border-slate-200 bg-white p-3"><div className="text-xl font-semibold text-brand">{v}</div><div className="text-xs text-slate-500">{l}</div></div>))}
       </div>
       {att.status === 'submitted' && <p className="rounded-md bg-orange-50 p-3 text-sm text-orange-800">Ci sono risposte da correggere. Finché non assegni un punteggio a tutte, il voto non è definitivo e lo studente non vede il risultato.</p>}
-      {msg && <p role="status" className={`rounded-md p-3 text-sm ${msg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{msg.t}</p>}
+      <Notice msg={msg} />
       {pdf && <p className="rounded-md bg-green-50 p-3 text-sm text-green-800">PDF pronto: <a className="font-medium underline" href={pdf.url} download={pdf.name} target="_blank" rel="noreferrer">apri o scarica {pdf.name}</a></p>}
 
       {items.map(({ q, an, s }, i) => {

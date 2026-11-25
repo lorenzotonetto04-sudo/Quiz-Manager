@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import Notice from './Notice'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { gradeValue, generateScale, lookup, toNum, validateScale, type ScaleRow } from '../lib/scale'
@@ -80,7 +81,7 @@ export default function Settings() {
   return (
     <div className="max-w-3xl space-y-6 pb-24">
       <h1 className="text-2xl font-semibold text-brand">Impostazioni</h1>
-      {msg && <p role="status" className={`rounded-md p-3 text-sm ${msg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{msg.t}</p>}
+      <Notice msg={msg} />
 
       <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="font-medium">Scale di valutazione</h2>

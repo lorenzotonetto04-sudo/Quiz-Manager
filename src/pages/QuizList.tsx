@@ -1,3 +1,4 @@
+import Notice from './Notice'
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -10,7 +11,7 @@ const COLOR: Record<string, string> = { draft: 'text-orange-600', published: 'te
 export default function QuizList({ onlyPublished = false }: { onlyPublished?: boolean }) {
   const [rows, setRows] = useState<Row[]>([])
   const [q, setQ] = useState(''); const [status, setStatus] = useState(onlyPublished ? 'published' : '')
-  const [msg, setMsg] = useState('')
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null)
 
   const load = useCallback(async () => {
     let query = supabase.from('quizzes').select('id,title,subject,status,created_at').order('created_at', { ascending: false })
@@ -33,7 +34,7 @@ export default function QuizList({ onlyPublished = false }: { onlyPublished?: bo
       shuffle_questions: quiz.shuffle_questions, shuffle_options: quiz.shuffle_options,
       results_mode: quiz.results_mode, scale_id: quiz.scale_id,
     })
-    if (error) return setMsg('Duplicazione non riuscita: ' + error.message)
+    if (error) return setMsg({ ok: false, t: 'Duplicazione non riuscita: ' + error.message })
     const pmap: Record<string, string> = {}
     const newPs = (ps ?? []).map((p) => { pmap[p.id] = newId(); return { id: pmap[p.id], quiz_id: nid, position: p.position, title: p.title, body: p.body, image_path: p.image_path } })
     if (newPs.length) await supabase.from('quiz_passages').insert(newPs)
@@ -44,13 +45,13 @@ export default function QuizList({ onlyPublished = false }: { onlyPublished?: bo
     if (newQs.length) await supabase.from('quiz_questions').insert(newQs)
     const newSols = (sols ?? []).map((s) => ({ question_id: map[s.question_id], quiz_id: nid, solution: s.solution, explanation: s.explanation }))
     if (newSols.length) await supabase.from('quiz_solutions').insert(newSols)
-    setMsg('Verifica duplicata come bozza.'); load()
+    setMsg({ ok: true, t: 'Verifica duplicata come bozza.' }); load()
   }
   async function setSt(id: string, st: string) { await supabase.from('quizzes').update({ status: st }).eq('id', id); load() }
   async function remove(id: string, title: string) {
     if (!confirm(`Eliminare definitivamente "${title}" con tutti i risultati degli studenti?`)) return
     const { error } = await supabase.from('quizzes').delete().eq('id', id)
-    setMsg(error ? 'Eliminazione non riuscita: ' + error.message : 'Verifica eliminata.'); load()
+    setMsg(error ? { ok: false, t: 'Eliminazione non riuscita: ' + error.message } : { ok: true, t: 'Verifica eliminata.' }); load()
   }
 
   const shown = rows.filter((r) => (r.title + ' ' + r.subject).toLowerCase().includes(q.toLowerCase()))
@@ -67,7 +68,7 @@ export default function QuizList({ onlyPublished = false }: { onlyPublished?: bo
             <option value="">Tutti gli stati</option><option value="draft">Bozze</option>
             <option value="published">Pubblicate</option><option value="archived">Archiviate</option></select>)}
       </div>
-      {msg && <p role="status" className="rounded-md bg-green-50 p-3 text-sm text-green-800">{msg}</p>}
+      <Notice msg={msg} />
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 text-slate-500"><tr>

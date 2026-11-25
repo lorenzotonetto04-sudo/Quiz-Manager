@@ -19,9 +19,8 @@ export function buildStudentPdf(name: string, atts: Att[], filterText: string, d
   const text = (s: string, o: { size?: number; font?: FontKey; gray?: number; rgb?: RGB; gap?: number; x?: number; w?: number } = {}) => {
     const size = o.size ?? 10.5, font = o.font ?? 'F1', lh = size * LH
     const ls = wrap(s, o.w ?? CW, size, font)
-    ensure(ls.length * lh)
-    ls.forEach((l, i) => pdf.text(ML + (o.x ?? 0), y + i * lh, l, size, font, o.gray ?? 0, o.rgb))
-    y += ls.length * lh + (o.gap ?? 0)
+    for (const l of ls) { ensure(lh); pdf.text(ML + (o.x ?? 0), y, l, size, font, o.gray ?? 0, o.rgb); y += lh } // riga per riga: il testo prosegue nella pagina successiva
+    y += o.gap ?? 0
   }
 
   const sorted = [...atts].sort((a, b) => (a.submitted_at ?? '').localeCompare(b.submitted_at ?? ''))

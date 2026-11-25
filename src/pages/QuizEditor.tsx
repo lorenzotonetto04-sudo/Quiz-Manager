@@ -1,3 +1,4 @@
+import Notice from './Notice'
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -8,7 +9,7 @@ import AiPanel from './AiPanel'
 import ImageField from './ImageField'
 import { loadImages } from '../lib/pdfImages'
 import { generateScale, gradeValue, toNum } from '../lib/scale'
-import { buildQuizPdf } from '../lib/pdfQuiz'
+import { buildQuizPdf, versionLetter } from '../lib/pdfQuiz'
 
 type Link_ = { id: string; token: string; is_active: boolean; expires_at: string | null; max_attempts: number | null }
 const toLocal = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() - new Date(iso).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '')
@@ -29,6 +30,7 @@ export default function QuizEditor() {
   const [showAi, setShowAi] = useState(false)
   const [passages, setPassages] = useState<{ id: string; title: string; body: string; imagePath: string | null }[]>([])
   const [busyPdf, setBusyPdf] = useState(false)
+  const [version, setVersion] = useState('') // '' = standard, '0' = A, '1' = B ...
   const [pdf, setPdf] = useState<{ url: string; name: string } | null>(null)
   const [scales, setScales] = useState<any[]>([]); const [defScale, setDefScale] = useState(''); const [newPass, setNewPass] = useState('')
   const base = location.origin + location.pathname + '#/s/'
@@ -109,11 +111,11 @@ export default function QuizEditor() {
     await supabase.rpc('teacher_ensure_default_scale')
     const { data: sc } = await supabase.from('grade_scales').select('id').eq('is_default', true).limit(1).single()
     await supabase.from('quizzes').update({ status: 'published', published_at: new Date().toISOString(), scale_id: quiz.scale_id ?? sc?.id ?? null }).eq('id', id)
-    if (links.length === 0) await supabase.from('access_links').insert({ quiz_id: id })
+    if (links.length === 0) await supabase.from('access_links').insert({ quiz_id: id, max_attempts: 1 })
     await load(); setMsg({ ok: true, t: 'Verifica pubblicata. Copia il link e invialo agli studenti.' })
   }
   async function unpublish() { await supabase.from('quizzes').update({ status: 'draft' }).eq('id', id); await load() }
-  async function addLink() { await supabase.from('access_links').insert({ quiz_id: id }); load() }
+  async function addLink() { await supabase.from('access_links').insert({ quiz_id: id, max_attempts: 1 }); load() }
   async function patchLink(l: Link_, p: Partial<Link_>) { await supabase.from('access_links').update(p).eq('id', l.id); load() }
   async function delLink(l: Link_) { if (confirm('Eliminare questo link? Gli studenti non potranno più usarlo.')) { await supabase.from('access_links').delete().eq('id', l.id); load() } }
   async function copy(t: string) { await navigator.clipboard.writeText(t); setMsg({ ok: true, t: 'Link copiato.' }) }
@@ -148,10 +150,10 @@ export default function QuizEditor() {
       const sc = scales.find((x) => x.id === (quiz.scale_id ?? defScale))
       const paths = Array.from(new Set([...qs.map((q) => q.imagePath), ...passages.map((p) => p.imagePath)].filter(Boolean) as string[]))
       const { images, missing } = paths.length ? await loadImages(paths) : { images: {}, missing: 0 }
-      const bytes = buildQuizPdf(t, quiz, qs, sc ? Number(sc.pass_percent) : null, { passages, images })
+      const bytes = buildQuizPdf(t, quiz, qs, sc ? Number(sc.pass_percent) : null, { passages, images, version: version === '' ? undefined : Number(version) })
       const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: 'application/pdf' }))
       const base = String(quiz.title).replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'verifica'
-      const name = base + (t === 'correttore' ? '_correttore' : '') + '.pdf'
+      const name = base + (version === '' ? '' : '_versione' + versionLetter(Number(version))) + (t === 'correttore' ? '_correttore' : '') + '.pdf'
       if (pdf) URL.revokeObjectURL(pdf.url)
       setPdf({ url, name })
       setMsg(missing ? { ok: false, t: `${missing} ${missing === 1 ? 'immagine non è stata inclusa' : 'immagini non sono state incluse'} nel PDF perché non è stato possibile scaricarle.` } : null)
@@ -194,7 +196,7 @@ export default function QuizEditor() {
           <h1 className="text-2xl font-semibold text-brand">{quiz.title}</h1></div>
         <span className={published ? 'text-green-700' : 'text-orange-600'}>{published ? 'Pubblicata' : quiz.status === 'archived' ? 'Archiviata' : 'Bozza'}</span>
       </div>
-      {msg && <p role="status" className={`rounded-md p-3 text-sm ${msg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{msg.t}</p>}
+      <Notice msg={msg} />
       {pdf && <p className="rounded-md bg-green-50 p-3 text-sm text-green-800">PDF pronto: <a className="font-medium underline" href={pdf.url} download={pdf.name} target="_blank" rel="noreferrer">apri o scarica {pdf.name}</a></p>}
       {locked && <p className="rounded-md bg-orange-50 p-3 text-sm text-orange-800">Uno studente ha già iniziato questa verifica: domande e punteggi non sono più modificabili. Per cambiarli, duplica la verifica dall'archivio.</p>}
 
@@ -280,18 +282,20 @@ export default function QuizEditor() {
               <div className="flex flex-wrap items-center gap-3">
                 <button className="btn btn-primary" onClick={() => copy(base + l.token)}>Copia link</button>
                 <label className="flex items-center gap-1"><input type="checkbox" checked={l.is_active} onChange={(e) => patchLink(l, { is_active: e.target.checked })} />Attivo</label>
-                <label className="flex items-center gap-1">Tentativi max <input className="input w-20" type="number" min="1" defaultValue={l.max_attempts ?? ''}
+                <label className="flex items-center gap-1">Tentativi per studente <input className="input w-20" type="number" min="1" placeholder="∞" defaultValue={l.max_attempts ?? ''}
                   onBlur={(e) => patchLink(l, { max_attempts: e.target.value ? Number(e.target.value) : null })} /></label>
                 <label className="flex items-center gap-1">Scade <input className="input w-52" type="datetime-local" defaultValue={toLocal(l.expires_at)}
                   onBlur={(e) => patchLink(l, { expires_at: toIso(e.target.value) })} /></label>
                 <button className="text-red-600 underline" onClick={() => delLink(l)}>Elimina</button>
               </div></div>))}
           <button className="btn btn-ghost" onClick={addLink}>Aggiungi un altro link</button>
-          <p className="text-xs text-slate-500">Lo svolgimento da parte degli studenti sarà disponibile con la prossima fase: per ora i link vengono solo creati.</p>
+          <p className="text-xs text-slate-500">Tentativi per studente: ogni studente (riconosciuto da nome e cognome) può svolgere la verifica al massimo questo numero di volte. Se lasci vuoto, sono illimitati. Dopo la consegna, lo studente trova il pulsante per rifarla solo se hai consentito più di un tentativo.</p>
         </section>)}
 
       <div className="fixed inset-x-0 bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white p-3 md:left-60">
         {dirty && <span className="mr-auto text-sm text-orange-600">Modifiche non salvate</span>}
+        <select className="input w-auto" value={version} onChange={(e) => setVersion(e.target.value)} aria-label="Versione del PDF" title="Versione del PDF (A = ordine originale; B, C, D = domande e risposte in ordine diverso)">
+          <option value="">Versione: standard</option><option value="0">Versione A</option><option value="1">Versione B</option><option value="2">Versione C</option><option value="3">Versione D</option></select>
         <button className="btn btn-ghost" disabled={busyPdf} onClick={() => openPdf('studente')}>{busyPdf ? 'Preparo il PDF…' : 'PDF verifica'}</button>
         <button className="btn btn-ghost" disabled={busyPdf} onClick={() => openPdf('correttore')}>PDF correttore</button>
         {published && !locked && <button className="btn btn-ghost" onClick={unpublish}>Riporta in bozza</button>}

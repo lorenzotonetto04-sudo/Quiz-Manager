@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import Notice from './Notice'
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { TYPES, blankQuestion, fmtNum, normalizeSolution, validateQuestion, type Q } from '../lib/types'
@@ -45,7 +46,7 @@ export default function Bank() {
     <div className="max-w-4xl space-y-4">
       <h1 className="text-2xl font-semibold text-brand">Archivio domande</h1>
       <p className="text-sm text-slate-600">Qui conservi le domande da riutilizzare. Le salvi dall'editor di una verifica (pulsante "Salva in archivio") e le inserisci in altre verifiche con "Aggiungi dall'archivio".</p>
-      {msg && <p role="status" className={`rounded-md p-3 text-sm ${msg.ok ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-700'}`}>{msg.t}</p>}
+      <Notice msg={msg} />
 
       {edit && (
         <div className="space-y-3 rounded-lg border border-brand bg-brand-light p-4">

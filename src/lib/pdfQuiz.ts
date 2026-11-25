@@ -3,7 +3,7 @@ import { PdfWriter, textWidth, type FontKey } from './pdfDoc'
 import { TYPES, BLANK_TYPES, fmtNum, type Q } from './types'
 import { describeSolution, seededShuffle } from './describe'
 
-type Row = { h: number; draw: (x: number, y: number) => void }
+type Row = { h: number; draw: (x: number, y: number) => void; parts?: Row[] } // parts: righe in cui il blocco può essere spezzato tra due pagine
 export const ML = 42.5, CW = 595.28 - 2 * 42.5, TOP = 44, BOTTOM = 841.89 - 52, LH = 1.3
 export const clean = (s: unknown) => String(s ?? '').replace(/→/g, '->').replace(/[✔✓☐○]/g, '').replace(/\r/g, '')
 
@@ -37,10 +37,42 @@ export const letter = (i: number) => String.fromCharCode(65 + i)
 
 export type PassageIn = { id: string; title: string; body: string; imagePath?: string | null }
 export type ImageIn = { bytes: Uint8Array; w: number; h: number; comps: number }
-export type Extras = { passages?: PassageIn[]; images?: Record<string, ImageIn> }
+export type Extras = { passages?: PassageIn[]; images?: Record<string, ImageIn>; version?: number }
+
+export const versionLetter = (v: number) => String.fromCharCode(65 + v)
+
+// Un brano con le sue domande è un "blocco" (come un esercizio a sé): le domande di un brano stanno sempre dopo il brano.
+function groupByPassage(qs: Q[]): Q[][] {
+  const blocks: Q[][] = []; const byPassage = new Map<string, Q[]>()
+  for (const q of qs) {
+    if (q.passageId) { let b = byPassage.get(q.passageId); if (!b) { b = []; byPassage.set(q.passageId, b); blocks.push(b) } b.push(q) } else blocks.push([q])
+  }
+  return blocks
+}
+
+// Versione 0 (A) = ordine originale (con le domande dei brani riunite). Le altre mescolano l'ordine dei blocchi, delle domande
+// dentro ogni brano e delle risposte, in modo ripetibile: ogni domanda conserva risposte corrette e punteggio.
+export function versionize(qs: Q[], quizId: string, version: number): Q[] {
+  const blocks = groupByPassage(qs)
+  if (version <= 0) return blocks.flat()
+  const seed = `${quizId}:v${version}`
+  const reorder = <T,>(l: T[], s: string): T[] => {
+    const r = seededShuffle(l, s)
+    return l.length > 1 && r.every((x, i) => x === l[i]) ? [...l.slice(1), l[0]] : r
+  }
+  const order = reorder(blocks, seed).map((b, k) => (b.length > 1 ? reorder(b, `${seed}:in:${k}:${b[0].passageId}`) : b))
+  return order.flat().map((q) => {
+    const c = { ...q.content }
+    if (Array.isArray(c.options)) c.options = reorder(c.options, `${seed}:${q.id}`)
+    if (q.type === 'matching' && Array.isArray(c.right)) c.right = reorder(c.right, `${seed}:r:${q.id}`)
+    return { ...q, content: c }
+  })
+}
 
 export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[], pass: number | null, extras: Extras = {}): Uint8Array {
   const key = kind === 'correttore'
+  const vTag = extras.version === undefined ? '' : ` · VERSIONE ${versionLetter(extras.version)}`
+  qs = versionize(qs, String(quiz.id ?? 'quiz'), extras.version ?? 0)
   const pdf = new PdfWriter()
   let y = TOP
   pdf.addPage()
@@ -50,7 +82,9 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
   const para = (text: string, o: { x?: number; w?: number; size?: number; font?: FontKey; gray?: number; gap?: number } = {}): Row => {
     const size = o.size ?? 11, font = o.font ?? 'F1', w = o.w ?? CW, lh = size * LH
     const lines = wrap(text, w, size, font)
-    return { h: lines.length * lh + (o.gap ?? 0), draw: (x, yy) => lines.forEach((l, i) => pdf.text(x + (o.x ?? 0), yy + i * lh, l, size, font, o.gray ?? 0)) }
+    const gap = o.gap ?? 0
+    const parts: Row[] = lines.map((l, i) => ({ h: lh + (i === lines.length - 1 ? gap : 0), draw: (x, yy) => pdf.text(x + (o.x ?? 0), yy, l, size, font, o.gray ?? 0) }))
+    return { h: lines.length * lh + gap, draw: (x, yy) => lines.forEach((l, i) => pdf.text(x + (o.x ?? 0), yy + i * lh, l, size, font, o.gray ?? 0)), parts }
   }
   const space = (h: number): Row => ({ h, draw: () => {} })
   const lines = (count: number): Row => ({ h: count * 24 + 4, draw: (x, yy) => { for (let i = 1; i <= count; i++) pdf.line(x, yy + i * 24 - 2, x + CW, yy + i * 24 - 2, 0.6, 0.55) } })
@@ -65,7 +99,7 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
   const place = (rows: Row[], together = true) => {
     const total = rows.reduce((t, r) => t + r.h, 0)
     if (together && total <= BOTTOM - TOP && y + total > BOTTOM) newPage()
-    for (const r of rows) { if (y + r.h > BOTTOM) newPage(); r.draw(ML, y); y += r.h }
+    for (const r of rows.flatMap((x) => x.parts ?? [x])) { if (y + r.h > BOTTOM) newPage(); r.draw(ML, y); y += r.h }
   }
 
   // ---- immagini e brani ----
@@ -81,7 +115,7 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
   }
   // Il brano ha una barra grigia a sinistra che prosegue su tutte le sue righe
   const passageRows = (p: PassageIn): Row[] => {
-    const bar = (r: Row): Row => ({ h: r.h, draw: (x, yy) => { r.draw(x, yy); pdf.line(x + 3, yy, x + 3, yy + r.h, 2, 0.75) } })
+    const bar = (r: Row): Row => ({ h: r.h, draw: (x, yy) => { r.draw(x, yy); pdf.line(x + 3, yy, x + 3, yy + r.h, 2, 0.75) }, parts: r.parts?.map(bar) })
     const rows: Row[] = []
     if (p.title) rows.push(bar(para(p.title, { size: 11, font: 'F2', x: 14, w: CW - 14, gap: 3 })))
     rows.push(bar(para(p.body, { size: 10.5, x: 14, w: CW - 14, gap: 4 })))
@@ -93,8 +127,9 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
   // ---- intestazione ----
   const total = qs.reduce((t, q) => t + (Number(q.points) || 0), 0)
   const head: Row[] = []
-  if (key) head.push(para('CORRETTORE - RISERVATO AL DOCENTE', { size: 8.5, font: 'F2', gray: 0.3, gap: 2 }))
+  if (key) head.push(para('CORRETTORE - RISERVATO AL DOCENTE' + vTag, { size: 8.5, font: 'F2', gray: 0.3, gap: 2 }))
   head.push(para(quiz.title, { size: 17, font: 'F2', gap: 2 }))
+  if (!key && extras.version !== undefined) head.push(para(`Versione ${versionLetter(extras.version)}`, { size: 12, font: 'F2', gray: 0.2, gap: 2 }))
   const meta = [quiz.subject, quiz.topic, quiz.level].filter(Boolean).join('  ·  ')
   if (meta) head.push(para(meta, { size: 10, gray: 0.35, gap: 4 }))
   head.push({ h: 8, draw: (x, yy) => pdf.line(x, yy + 3, x + CW, yy + 3, 1.4, 0.15) })
@@ -122,7 +157,8 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
     const tl = wrap(`${i + 1}. ${text}`, CW - ptsW - 14, 11, 'F2')
     const rows: Row[] = [{ h: tl.length * 11 * LH + 2, draw: (x, yy) => {
       tl.forEach((l, k) => pdf.text(x, yy + k * 11 * LH, l, 11, 'F2'))
-      pdf.text(x + CW - ptsW, yy, pts, 10) } }]
+      pdf.text(x + CW - ptsW, yy, pts, 10) },
+      parts: tl.map((l, k): Row => ({ h: 11 * LH + (k === tl.length - 1 ? 2 : 0), draw: (x, yy) => { pdf.text(x, yy, l, 11, 'F2'); if (k === 0) pdf.text(x + CW - ptsW, yy, pts, 10) } })) }]
     if (key) rows.push(para(`(${TYPES[q.type]})`, { size: 8.5, font: 'F3', gray: 0.45, gap: 2 }))
     const qImg = imageRow(q.imagePath); if (qImg) rows.push(qImg)
 
@@ -161,7 +197,7 @@ export function buildQuizPdf(kind: 'studente' | 'correttore', quiz: any, qs: Q[]
   const n = pdf.pageCount
   for (let p = 0; p < n; p++) {
     pdf.goto(p)
-    const t = `${clean(quiz.title)}${key ? ' - Correttore' : ''}  ·  pagina ${p + 1} di ${n}`
+    const t = `${clean(quiz.title)}${key ? ' - Correttore' : ''}${extras.version === undefined ? '' : ' - Versione ' + versionLetter(extras.version)}  ·  pagina ${p + 1} di ${n}`
     pdf.text((pdf.width - textWidth(t, 8.5)) / 2, pdf.height - 36, t, 8.5, 'F1', 0.45)
   }
   return pdf.build()

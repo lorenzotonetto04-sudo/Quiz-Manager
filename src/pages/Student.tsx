@@ -27,13 +27,15 @@ export default function Student() {
   const [att, setAtt] = useState<any>(null)
   const [key, setKey] = useState('')
   const [err, setErr] = useState('')
+  const [prefill, setPrefill] = useState<{ first: string; last: string } | null>(null)
+  const loadInfo = () => supabase.rpc('student_get_link_info', { p_token: token }).then(({ data: i }) => { if (i) setInfo(i) })
 
   useEffect(() => {
     (async () => {
       const saved = readSaved(token)
       if (saved) {
         const { data } = await supabase.rpc('student_resume_attempt', { p_attempt: saved.id, p_key: saved.key })
-        if (data) { setAtt(data); setKey(saved.key); setPhase(data.status === 'in_progress' ? 'quiz' : 'result'); return }
+        if (data) { setAtt(data); setKey(saved.key); setPhase(data.status === 'in_progress' ? 'quiz' : 'result'); if (data.status !== 'in_progress') loadInfo(); return }
       }
       const { data, error } = await supabase.rpc('student_get_link_info', { p_token: token })
       if (error || !data) { setErr('Impossibile contattare il server. Controlla la connessione e ricarica.'); return setPhase('error') }
@@ -44,13 +46,20 @@ export default function Student() {
 
   if (phase === 'loading') return <Shell><p className="text-sm text-slate-500">Caricamento…</p></Shell>
   if (phase === 'error') return <Shell><p role="alert" className="rounded-md bg-red-50 p-4 text-red-700">{err}</p></Shell>
-  if (phase === 'intro') return <Intro token={token} info={info} onStarted={(d: any) => { setAtt(d); setKey(d.access_key); setPhase('quiz') }} />
-  if (phase === 'quiz') return <Quiz att={att} k={key} onDone={() => setPhase('result')} />
-  return <Result att={att} k={key} />
+  // Nuovo tentativo: si riparte dalla pagina iniziale con il nome già scritto (il limite lo controlla il server)
+  const retry = () => {
+    try { localStorage.removeItem(storeKey(token)) } catch { /* ignora */ }
+    setPrefill({ first: att?.student?.first ?? '', last: att?.student?.last ?? '' }); setAtt(null); setKey(''); setPhase('intro')
+  }
+  const canRetry = !!info?.valid && (info.max_attempts === null || info.max_attempts === undefined || info.max_attempts > 1)
+
+  if (phase === 'intro') return <Intro token={token} info={info} prefill={prefill} onStarted={(d: any) => { setAtt(d); setKey(d.access_key); setPhase('quiz') }} />
+  if (phase === 'quiz') return <Quiz att={att} k={key} onDone={() => { setPhase('result'); if (!info) loadInfo() }} />
+  return <Result att={att} k={key} canRetry={canRetry} maxAttempts={info?.max_attempts ?? null} onRetry={retry} />
 }
 
-function Intro({ token, info, onStarted }: { token: string; info: any; onStarted: (d: any) => void }) {
-  const [first, setFirst] = useState(''); const [last, setLast] = useState('')
+function Intro({ token, info, prefill, onStarted }: { token: string; info: any; prefill?: { first: string; last: string } | null; onStarted: (d: any) => void }) {
+  const [first, setFirst] = useState(prefill?.first ?? ''); const [last, setLast] = useState(prefill?.last ?? '')
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
   async function start(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setErr('')
@@ -196,7 +205,7 @@ function Input({ q, value, onChange, shuffleOpts, seed }: { q: any; value: any; 
   return <textarea className="input" rows={rows} value={value || ''} onChange={(e) => onChange(e.target.value)} aria-label="La tua risposta" />
 }
 
-function Result({ att, k }: { att: any; k: string }) {
+function Result({ att, k, canRetry, maxAttempts, onRetry }: { att: any; k: string; canRetry: boolean; maxAttempts: number | null; onRetry: () => void }) {
   const [res, setRes] = useState<any>(null); const [err, setErr] = useState('')
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('student_get_result', { p_attempt: att.attempt_id, p_key: k })
@@ -237,6 +246,11 @@ function Result({ att, k }: { att: any; k: string }) {
                 {d.comment && <p className="text-brand">Commento del docente: {d.comment}</p>}
               </section>)
           })}
+        </div>)}
+      {canRetry && res && res.state !== 'in_progress' && (
+        <div className="mt-4 rounded-lg border bg-white p-4 text-sm">
+          <p className="text-slate-700">{maxAttempts ? `Puoi rifare la verifica (massimo ${maxAttempts} tentativi in tutto).` : 'Puoi rifare la verifica.'}</p>
+          <button className="btn btn-primary mt-3" onClick={onRetry}>Fai un nuovo tentativo</button>
         </div>)}
     </Shell>
   )

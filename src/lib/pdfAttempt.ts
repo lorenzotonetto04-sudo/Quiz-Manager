@@ -4,7 +4,7 @@ import { ML, CW, TOP, BOTTOM, LH, wrap, clean } from './pdfQuiz'
 import { BLANK_TYPES, fmtNum } from './types'
 import { describeAnswer, describeSolution } from './describe'
 
-type Row = { h: number; draw: (x: number, y: number) => void }
+type Row = { h: number; draw: (x: number, y: number) => void; parts?: Row[] } // parts: righe in cui il blocco può essere spezzato tra due pagine
 type RGB = [number, number, number]
 const GREEN: RGB = [0.08, 0.45, 0.2], RED: RGB = [0.72, 0.12, 0.12], ORANGE: RGB = [0.8, 0.42, 0.05], BLUE: RGB = [0.1, 0.3, 0.55]
 
@@ -18,12 +18,14 @@ export function drawAttempt(pdf: PdfWriter, quiz: any, att: any, items: any[]): 
   const para = (text: string, o: { x?: number; w?: number; size?: number; font?: FontKey; gray?: number; rgb?: RGB; gap?: number } = {}): Row => {
     const size = o.size ?? 10.5, font = o.font ?? 'F1', w = o.w ?? CW, lh = size * LH
     const ls = wrap(text, w, size, font)
-    return { h: ls.length * lh + (o.gap ?? 0), draw: (x, yy) => ls.forEach((l, i) => pdf.text(x + (o.x ?? 0), yy + i * lh, l, size, font, o.gray ?? 0, o.rgb)) }
+    const gap = o.gap ?? 0
+    const parts: Row[] = ls.map((l, i) => ({ h: lh + (i === ls.length - 1 ? gap : 0), draw: (x, yy) => pdf.text(x + (o.x ?? 0), yy, l, size, font, o.gray ?? 0, o.rgb) }))
+    return { h: ls.length * lh + gap, draw: (x, yy) => ls.forEach((l, i) => pdf.text(x + (o.x ?? 0), yy + i * lh, l, size, font, o.gray ?? 0, o.rgb)), parts }
   }
   const place = (rows: Row[], together = true) => {
     const total = rows.reduce((t, r) => t + r.h, 0)
     if (together && total <= BOTTOM - TOP && y + total > BOTTOM) newPage()
-    for (const r of rows) { if (y + r.h > BOTTOM) newPage(); r.draw(ML, y); y += r.h }
+    for (const r of rows.flatMap((x) => x.parts ?? [x])) { if (y + r.h > BOTTOM) newPage(); r.draw(ML, y); y += r.h }
   }
   const option = (text: string, multi: boolean, chosen: boolean, isCorrect: boolean, showSol: boolean): Row => {
     const wrongPick = chosen && showSol && !isCorrect
@@ -68,7 +70,8 @@ export function drawAttempt(pdf: PdfWriter, quiz: any, att: any, items: any[]): 
     const tl = wrap(`${i + 1}. ${text}`, CW - bw - 14, 11, 'F2')
     const rows: Row[] = [{ h: tl.length * 11 * LH + 2, draw: (x, yy) => {
       tl.forEach((l, k) => pdf.text(x, yy + k * 11 * LH, l, 11, 'F2'))
-      pdf.text(x + CW - bw, yy, badge, 10, 'F2', 0, status === 'pending' ? undefined : color) } }]
+      pdf.text(x + CW - bw, yy, badge, 10, 'F2', 0, status === 'pending' ? undefined : color) },
+      parts: tl.map((l, k): Row => ({ h: 11 * LH + (k === tl.length - 1 ? 2 : 0), draw: (x, yy) => { pdf.text(x, yy, l, 11, 'F2'); if (k === 0) pdf.text(x + CW - bw, yy, badge, 10, 'F2', 0, status === 'pending' ? undefined : color) } })) }]
     const ans = an.answer
 
     if (q.type === 'mcq_single' || q.type === 'mcq_multi') {
